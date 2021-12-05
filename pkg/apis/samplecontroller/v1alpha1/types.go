@@ -35,13 +35,15 @@ type VM struct {
 
 // VMSpec is the spec for a VM resource
 type VMSpec struct {
-	DeploymentName string `json:"deploymentName"`
-	Replicas       *int32 `json:"replicas,omitempty"`
+	VMName   string `json:"name"`
+	Replicas *int32 `json:"replicas,omitempty"`
 }
 
 // VMStatus is the status for a VM resource
 type VMStatus struct {
-	AvailableReplicas int32 `json:"availableReplicas"`
+	AvailableReplicas int32  `json:"availableReplicas,omitempty"`
+	VMID              string `json:"vmId,omitempty"`
+	CPUUtilization    int32  `json:"cpuUtilization,omitempty"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object

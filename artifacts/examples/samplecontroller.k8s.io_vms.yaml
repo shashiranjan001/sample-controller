@@ -31,13 +31,13 @@ spec:
             spec:
               description: VMSpec is the spec for a VM resource
               properties:
-                deploymentName:
+                name:
                   type: string
                 replicas:
                   format: int32
                   type: integer
               required:
-                - deploymentName
+                - name
               type: object
             status:
               description: VMStatus is the status for a VM resource
@@ -45,8 +45,11 @@ spec:
                 availableReplicas:
                   format: int32
                   type: integer
-              required:
-                - availableReplicas
+                cpuUtilization:
+                  format: int32
+                  type: integer
+                vmId:
+                  type: string
               type: object
           type: object
       served: true

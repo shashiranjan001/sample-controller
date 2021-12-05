@@ -27,7 +27,7 @@ type VM struct {
 }
 
 type VMStatus struct {
-	CPUUtilization float64 `json:"cpuUtilization"`
+	CPUUtilization int32 `json:"cpuUtilization"`
 }
 
 const baseUrl = "http://10.150.108.26:8080"

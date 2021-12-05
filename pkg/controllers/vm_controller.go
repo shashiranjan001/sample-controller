@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package main
+package controllers
 
 import (
 	"context"
@@ -223,7 +223,7 @@ func (c *Controller) syncHandler(key string) error {
 		return err
 	}
 
-	deploymentName := vm.Spec.DeploymentName
+	deploymentName := vm.Spec.VMName
 	if deploymentName == "" {
 		// We choose to absorb the error here as the worker would requeue the
 		// resource otherwise. Instead, the next time the resource is updated
