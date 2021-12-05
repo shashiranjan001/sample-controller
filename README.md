@@ -1,14 +1,14 @@
 # sample-controller
 
-This repository implements a simple controller for watching Foo resources as
+This repository implements a simple controller for watching VM resources as
 defined with a CustomResourceDefinition (CRD).
 
 **Note:** go-get or vendor this package as `k8s.io/sample-controller`.
 
 This particular example demonstrates how to perform basic operations such as:
 
-* How to register a new custom resource (custom resource type) of type `Foo` using a CustomResourceDefinition.
-* How to create/get/list instances of your new resource type `Foo`.
+* How to register a new custom resource (custom resource type) of type `VM` using a CustomResourceDefinition.
+* How to create/get/list instances of your new resource type `VM`.
 * How to setup a controller on resource handling create/update/delete events.
 
 It makes use of the generators in [k8s.io/code-generator](https://github.com/kubernetes/code-generator)
@@ -89,8 +89,8 @@ go build -o sample-controller .
 # create a CustomResourceDefinition
 kubectl create -f artifacts/examples/crd.yaml
 
-# create a custom resource of type Foo
-kubectl create -f artifacts/examples/example-foo.yaml
+# create a custom resource of type VM
+kubectl create -f artifacts/examples/example-vm.yaml
 
 # check deployments created through the custom resource
 kubectl get deployments
@@ -160,7 +160,7 @@ The [group](https://kubernetes.io/docs/reference/using-api/#api-groups) version 
 
 You can clean up the created CustomResourceDefinition with:
 ```sh
-kubectl delete crd foos.samplecontroller.k8s.io
+kubectl delete crd vms.samplecontroller.k8s.io
 ```
 
 ## Compatibility

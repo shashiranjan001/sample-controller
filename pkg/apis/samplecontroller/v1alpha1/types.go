@@ -22,33 +22,34 @@ import (
 
 // +genclient
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+// +kubebuilder:subresource:status
 
-// Foo is a specification for a Foo resource
-type Foo struct {
+// VM is a specification for a VM resource
+type VM struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec   FooSpec   `json:"spec"`
-	Status FooStatus `json:"status"`
+	Spec   VMSpec   `json:"spec,omitempty"`
+	Status VMStatus `json:"status,omitempty"`
 }
 
-// FooSpec is the spec for a Foo resource
-type FooSpec struct {
+// VMSpec is the spec for a VM resource
+type VMSpec struct {
 	DeploymentName string `json:"deploymentName"`
-	Replicas       *int32 `json:"replicas"`
+	Replicas       *int32 `json:"replicas,omitempty"`
 }
 
-// FooStatus is the status for a Foo resource
-type FooStatus struct {
+// VMStatus is the status for a VM resource
+type VMStatus struct {
 	AvailableReplicas int32 `json:"availableReplicas"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 
-// FooList is a list of Foo resources
-type FooList struct {
+// VMList is a list of VM resources
+type VMList struct {
 	metav1.TypeMeta `json:",inline"`
-	metav1.ListMeta `json:"metadata"`
+	metav1.ListMeta `json:"metadata,omitempty"`
 
-	Items []Foo `json:"items"`
+	Items []VM `json:"items,omitempty"`
 }
