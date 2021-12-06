@@ -1,6 +1,6 @@
 apiVersion: samplecontroller.k8s.io/v1alpha1
 kind: VM
 metadata:
-  name: example-vm
+  name: vm-test-2
 spec:
-  vmName: example-vm
+  vmName: vm-test-2

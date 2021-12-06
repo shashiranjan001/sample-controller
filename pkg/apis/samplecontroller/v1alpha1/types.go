@@ -56,3 +56,5 @@ type VMList struct {
 
 	Items []VM `json:"items,omitempty"`
 }
+
+const VMFinalizer = "finalizers.samplecontroller.k8s.io/vm"

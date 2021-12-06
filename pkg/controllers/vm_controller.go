@@ -104,6 +104,7 @@ func NewController(
 	vmInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: controller.enqueueVM,
 		UpdateFunc: func(old, new interface{}) {
+			// TODO: check if we can remove the old == new condition.
 			newVM := new.(*samplev1alpha1.VM)
 			oldVM := old.(*samplev1alpha1.VM)
 			if newVM.ResourceVersion == oldVM.ResourceVersion {
@@ -233,7 +234,8 @@ func (c *Controller) syncHandler(key string) error {
 		}
 		return err
 	}
-	if vm.Status.NextSyncAt != nil && !vm.Status.NextSyncAt.Before(toMetaV1Time(time.Now().UTC())) {
+	if vm.Status.NextSyncAt != nil &&
+		!vm.Status.NextSyncAt.Before(toMetaV1Time(time.Now().UTC())) {
 		return nil
 	}
 	if err := c.vmHandler(vm); err != nil {
@@ -246,6 +248,20 @@ func (c *Controller) syncHandler(key string) error {
 
 // Returns if requeue is needed, and error.
 func (c *Controller) vmHandler(vm *samplev1alpha1.VM) error {
+	if IsDeletionCandidate(vm, samplev1alpha1.VMFinalizer) {
+		// VM should be deleted. Check if it's deleted and remove finalizer.
+		err := cloud.DeleteVM(vm.Spec.VMName)
+		if err != nil {
+			klog.Errorf("Failed to delete VM. Will retry")
+			return err
+		}
+		return c.removeFinalizer(vm)
+	}
+
+	if NeedToAddFinalizer(vm, samplev1alpha1.VMFinalizer) {
+		return c.addFinalizer(vm)
+	}
+
 	vmID := vm.Status.VMID
 	if vmID == "" {
 		return c.createVM(vm)
@@ -309,7 +325,8 @@ func (c *Controller) createVM(vm *samplev1alpha1.VM) error {
 
 func (c *Controller) syncVMStatus(vm *samplev1alpha1.VM) error {
 	if vm.Status.VMID == "" {
-		utilruntime.HandleError(fmt.Errorf("Cannot sync VM status from cloud, VM ID is empty in CR status"))
+		utilruntime.HandleError(fmt.Errorf(
+			"Cannot sync VM status from cloud, VM ID is empty in CR status"))
 	}
 	cvmStatus, err := cloud.GetVMStatus(vm.Status.VMID)
 	if err != nil {
@@ -349,7 +366,7 @@ func (c *Controller) updateLatestVMStatus(vm *samplev1alpha1.VM, vmStatus sample
 	// we must use Update instead of UpdateStatus to update the Status block of the VM resource.
 	// UpdateStatus will not allow changes to the Spec of the resource,
 	// which is ideal for ensuring nothing other than resource status has been updated.
-	_, err = c.sampleclientset.SamplecontrollerV1alpha1().VMs(vm.Namespace).UpdateStatus(context.TODO(), vmLatest, metav1.UpdateOptions{})
+	_, err = c.sampleclientset.SamplecontrollerV1alpha1().VMs(vm.Namespace).UpdateStatus(context.Background(), vmLatest, metav1.UpdateOptions{})
 	return err
 }
 
@@ -363,8 +380,7 @@ func (c *Controller) updateVMStatus(vm *samplev1alpha1.VM, vmStatus samplev1alph
 	// we must use Update instead of UpdateStatus to update the Status block of the VM resource.
 	// UpdateStatus will not allow changes to the Spec of the resource,
 	// which is ideal for ensuring nothing other than resource status has been updated.
-	x, err := c.sampleclientset.SamplecontrollerV1alpha1().VMs(vm.Namespace).UpdateStatus(context.TODO(), vmCopy, metav1.UpdateOptions{})
-	klog.Info(x.Status.CPUUtilization)
+	_, err := c.sampleclientset.SamplecontrollerV1alpha1().VMs(vm.Namespace).UpdateStatus(context.Background(), vmCopy, metav1.UpdateOptions{})
 	return err
 }
 
@@ -390,4 +406,32 @@ func (c *Controller) enqueueVMAfter(obj interface{}, d time.Duration) {
 		return
 	}
 	c.workqueue.AddAfter(key, d)
+}
+
+func (c *Controller) addFinalizer(vm *samplev1alpha1.VM) error {
+	vmCopy := vm.DeepCopy()
+	AddFinalizer(vmCopy, samplev1alpha1.VMFinalizer)
+	if vmCopy.Labels == nil {
+		vmCopy.Labels = make(map[string]string)
+	}
+	vm, err := c.sampleclientset.SamplecontrollerV1alpha1().VMs(vm.Namespace).Update(context.TODO(), vmCopy, metav1.UpdateOptions{})
+	if err != nil {
+		klog.V(3).Infof("Error adding finalizer to vm %s: %v", vm.Name, err)
+		return err
+	}
+	klog.V(3).Infof("Added finalizer to vm %s", vm.Name)
+	return nil
+}
+
+func (c *Controller) removeFinalizer(vm *samplev1alpha1.VM) error {
+	clone := vm.DeepCopy()
+	vm.GetFinalizers()
+	RemoveFinalizer(clone, samplev1alpha1.VMFinalizer)
+	vm, err := c.sampleclientset.SamplecontrollerV1alpha1().VMs(vm.Namespace).Update(context.TODO(), clone, metav1.UpdateOptions{})
+	if err != nil {
+		klog.V(3).Infof("Error removing finalizer from vm %s: %v", vm.Name, err)
+		return err
+	}
+	klog.V(3).Infof("Removed protection finalizer from vm %s", vm.Name)
+	return nil
 }
