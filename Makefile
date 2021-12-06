@@ -16,8 +16,8 @@ codegen:
 	./hack/update-codegen.sh
 
 manifests: controller-gen yq
-	$(CONTROLLER_GEN) $(CRD_OPTIONS) paths=k8s.io/sample-controller/pkg/apis/samplecontroller/v1alpha1 crd:trivialVersions=true output:artifacts:config=artifacts/examples
-	yq -i eval "(.metadata.annotations[\"api-approved.kubernetes.io\"] |= \"unapproved, experimental-only\")" artifacts/examples/samplecontroller.k8s.io_vms.yaml 
+	$(CONTROLLER_GEN) $(CRD_OPTIONS) paths=k8s.io/sample-controller/pkg/apis/samplecontroller/v1alpha1 rbac:roleName=sample-controller-manager-role crd:trivialVersions=true output:artifacts:config=helm/templates
+	yq -i eval "(.metadata.annotations[\"api-approved.kubernetes.io\"] |= \"unapproved, experimental-only\")" helm/templates/samplecontroller.k8s.io_vms.yaml 
 
 controller-gen:
 ifeq (, $(shell which controller-gen))

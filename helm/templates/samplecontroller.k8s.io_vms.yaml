@@ -1,0 +1,62 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.4.1
+    api-approved.kubernetes.io: unapproved, experimental-only
+  creationTimestamp: null
+  name: vms.samplecontroller.k8s.io
+spec:
+  group: samplecontroller.k8s.io
+  names:
+    kind: VM
+    listKind: VMList
+    plural: vms
+    singular: vm
+  scope: Namespaced
+  versions:
+    - name: v1alpha1
+      schema:
+        openAPIV3Schema:
+          description: VM is a specification for a VM resource
+          properties:
+            apiVersion:
+              description: 'APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+              type: string
+            kind:
+              description: 'Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+              type: string
+            metadata:
+              type: object
+            spec:
+              description: VMSpec is the spec for a VM resource
+              properties:
+                vmName:
+                  type: string
+              required:
+                - vmName
+              type: object
+            status:
+              description: VMStatus is the status for a VM resource
+              properties:
+                cpuUtilization:
+                  format: int32
+                  type: integer
+                nextSyncAt:
+                  description: NextSyncAt is UTC time at or after which the next sync should happen.
+                  format: date-time
+                  type: string
+                vmId:
+                  type: string
+              type: object
+          type: object
+      served: true
+      storage: true
+      subresources:
+        status: {}
+status:
+  acceptedNames:
+    kind: ""
+    plural: ""
+  conditions: []
+  storedVersions: []

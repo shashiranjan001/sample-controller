@@ -1,0 +1,36 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sample-controller
+  namespace: {{ .Release.Namespace }}
+  labels:
+    control-plane: sample-controller
+spec:
+  replicas: {{ .Values.replicas }}
+  selector:
+    matchLabels:
+      control-plane: sample-controller
+  template:
+    metadata:
+      labels:
+        control-plane: sample-controller
+    spec:
+      serviceAccountName: default
+      containers:
+      - name: sample-controller
+        image: "nascarsayan/sample-controller:latest"
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8080
+          name: metrics
+          protocol: TCP
+        resources:
+          limits:
+            cpu: 100m
+            memory: 512Mi
+          requests:
+            cpu: 50m
+            memory: 256Mi
+        envFrom:
+        - configMapRef:
+            name: sample-controller-cm

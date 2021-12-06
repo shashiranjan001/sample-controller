@@ -10,12 +10,8 @@ import (
 	"k8s.io/klog/v2"
 )
 
-var CloudAPIErrors = map[int]string{
-	http.StatusInternalServerError: "CloudAPIInternalServerError",
-	http.StatusNotFound:            "CloudAPINotFoundError",
-	http.StatusConflict:            "CloudAPIConflictError",
-	http.StatusForbidden:           "CloudAPIForbiddenError",
-}
+// baseUrl is the REST API endpoint of the cloud.
+const baseUrl = "http://10.150.108.26:8080"
 
 type CloudAPIError struct {
 	StatusCode    int
@@ -42,7 +38,7 @@ func newCloudAPIError(statusCode int, body string) error {
 func newUnknownCloudAPIError(statusCode int) error {
 	return CloudAPIError{
 		StatusCode:    statusCode,
-		Message:       "Cloud API server misbehaving, it has returned unexpected error code",
+		Message:       "Cloud API server misbehaving, it has returned an unexpected status code",
 		isCodeUnknown: true,
 	}
 }
@@ -60,10 +56,6 @@ func ToCloudError(err error) *CloudAPIError {
 	return &cerr
 }
 
-const (
-	UnexpectedCloudAPIResponseStatus = "UnexpectedCloudAPIResponseStatus"
-)
-
 type VM struct {
 	Name string `json:"name"`
 	ID   string `json:"id"`
@@ -72,8 +64,6 @@ type VM struct {
 type VMStatus struct {
 	CPUUtilization int32 `json:"cpuUtilization"`
 }
-
-const baseUrl = "http://10.150.108.26:8080"
 
 func CreateVM(name string) (*VM, error) {
 	url := baseUrl + "/servers"

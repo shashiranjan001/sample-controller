@@ -1,21 +1,23 @@
 package controllers
 
 import (
+	"time"
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// IsDeletionCandidate checks if object is candidate to be deleted
-func IsDeletionCandidate(obj metav1.Object, finalizer string) bool {
-	return obj.GetDeletionTimestamp() != nil && ContainsString(obj.GetFinalizers(), finalizer)
+// isDeletionCandidate checks if object is candidate to be deleted
+func isDeletionCandidate(obj metav1.Object, finalizer string) bool {
+	return obj.GetDeletionTimestamp() != nil && containsString(obj.GetFinalizers(), finalizer)
 }
 
-// NeedToAddFinalizer checks if need to add finalizer to object
-func NeedToAddFinalizer(obj metav1.Object, finalizer string) bool {
-	return obj.GetDeletionTimestamp() == nil && !ContainsString(obj.GetFinalizers(), finalizer)
+// needToAddFinalizer checks if need to add finalizer to object
+func needToAddFinalizer(obj metav1.Object, finalizer string) bool {
+	return obj.GetDeletionTimestamp() == nil && !containsString(obj.GetFinalizers(), finalizer)
 }
 
-// ContainsString checks if a given slice of strings contains the provided string.
-func ContainsString(slice []string, s string) bool {
+// containsString checks if a given slice of strings contains the provided string.
+func containsString(slice []string, s string) bool {
 	for _, item := range slice {
 		if item == s {
 			return true
@@ -24,8 +26,8 @@ func ContainsString(slice []string, s string) bool {
 	return false
 }
 
-// AddFinalizer accepts an Object and adds the provided finalizer if not present.
-func AddFinalizer(o metav1.Object, finalizer string) {
+// addFinalizer accepts an Object and adds the provided finalizer if not present.
+func addFinalizer(o metav1.Object, finalizer string) {
 	f := o.GetFinalizers()
 	for _, e := range f {
 		if e == finalizer {
@@ -35,8 +37,8 @@ func AddFinalizer(o metav1.Object, finalizer string) {
 	o.SetFinalizers(append(f, finalizer))
 }
 
-// RemoveFinalizer accepts an Object and removes the provided finalizer if present.
-func RemoveFinalizer(o metav1.Object, finalizer string) {
+// removeFinalizer accepts an Object and removes the provided finalizer if present.
+func removeFinalizer(o metav1.Object, finalizer string) {
 	f := o.GetFinalizers()
 	for i := 0; i < len(f); i++ {
 		if f[i] == finalizer {
@@ -45,4 +47,11 @@ func RemoveFinalizer(o metav1.Object, finalizer string) {
 		}
 	}
 	o.SetFinalizers(f)
+}
+
+// GetUTCTimeNow return current UTC time as metav1.Time type.
+func toMetaV1Time(t time.Time) *metav1.Time {
+	return &metav1.Time{
+		Time: t,
+	}
 }

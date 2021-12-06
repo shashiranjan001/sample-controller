@@ -19,3 +19,6 @@ limitations under the License.
 
 // Package v1alpha1 is the v1alpha1 version of the API.
 package v1alpha1 // import "k8s.io/sample-controller/pkg/apis/samplecontroller/v1alpha1"
+
+// +kubebuilder:rbac:groups=samplecontroller.k8s.io,resources=vms,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=samplecontroller.k8s.io,resources=vms/status,verbs=get;update;patch

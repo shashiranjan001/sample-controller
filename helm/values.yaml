@@ -1,0 +1,22 @@
+replicas: 3
+
+env: production
+
+numWorkers: 4
+
+ha:
+  enabled: true
+  leaderElection:
+    leaseDurationSeconds: 15
+    renewDeadlineSeconds: 10
+    retryPeriodSeconds: 2
+  replicaCount: 3
+
+monitoring:
+  enabled: true
+  path: /metrics
+  port: 8000
+  namespace: monitoring
+  interval: 10s
+  labels:
+    release: monitoring

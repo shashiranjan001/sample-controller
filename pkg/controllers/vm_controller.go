@@ -248,7 +248,7 @@ func (c *Controller) syncHandler(key string) error {
 
 // Returns if requeue is needed, and error.
 func (c *Controller) vmHandler(vm *samplev1alpha1.VM) error {
-	if IsDeletionCandidate(vm, samplev1alpha1.VMFinalizer) {
+	if isDeletionCandidate(vm, samplev1alpha1.VMFinalizer) {
 		// VM should be deleted. Check if it's deleted and remove finalizer.
 		err := cloud.DeleteVM(vm.Spec.VMName)
 		if err != nil {
@@ -258,7 +258,7 @@ func (c *Controller) vmHandler(vm *samplev1alpha1.VM) error {
 		return c.removeFinalizer(vm)
 	}
 
-	if NeedToAddFinalizer(vm, samplev1alpha1.VMFinalizer) {
+	if needToAddFinalizer(vm, samplev1alpha1.VMFinalizer) {
 		return c.addFinalizer(vm)
 	}
 
@@ -269,17 +269,11 @@ func (c *Controller) vmHandler(vm *samplev1alpha1.VM) error {
 	return c.syncVMStatus(vm)
 }
 
-// GetUTCTimeNow return current UTC time as metav1.Time type.
-func toMetaV1Time(t time.Time) *metav1.Time {
-	return &metav1.Time{
-		Time: t,
-	}
-}
-
 // createVM tries to create the VM by calling the Cloud API endpoints and returns error
 // if the creation failed, and we need to retry.
 func (c *Controller) createVM(vm *samplev1alpha1.VM) error {
-	ok, err := cloud.IsNameValid(vm.Name)
+	vmName := vm.Spec.VMName
+	ok, err := cloud.IsNameValid(vmName)
 	if err != nil {
 		cerr := cloud.ToCloudError(err)
 		if cerr == nil {
@@ -295,7 +289,7 @@ func (c *Controller) createVM(vm *samplev1alpha1.VM) error {
 		utilruntime.HandleError(fmt.Errorf("VM name is not valid"))
 		return nil
 	}
-	cvm, err := cloud.CreateVM(vm.Name)
+	cvm, err := cloud.CreateVM(vmName)
 	if err != nil {
 		cerr := cloud.ToCloudError(err)
 		if cerr == nil {
@@ -410,7 +404,7 @@ func (c *Controller) enqueueVMAfter(obj interface{}, d time.Duration) {
 
 func (c *Controller) addFinalizer(vm *samplev1alpha1.VM) error {
 	vmCopy := vm.DeepCopy()
-	AddFinalizer(vmCopy, samplev1alpha1.VMFinalizer)
+	addFinalizer(vmCopy, samplev1alpha1.VMFinalizer)
 	if vmCopy.Labels == nil {
 		vmCopy.Labels = make(map[string]string)
 	}
@@ -426,7 +420,7 @@ func (c *Controller) addFinalizer(vm *samplev1alpha1.VM) error {
 func (c *Controller) removeFinalizer(vm *samplev1alpha1.VM) error {
 	clone := vm.DeepCopy()
 	vm.GetFinalizers()
-	RemoveFinalizer(clone, samplev1alpha1.VMFinalizer)
+	removeFinalizer(clone, samplev1alpha1.VMFinalizer)
 	vm, err := c.sampleclientset.SamplecontrollerV1alpha1().VMs(vm.Namespace).Update(context.TODO(), clone, metav1.UpdateOptions{})
 	if err != nil {
 		klog.V(3).Infof("Error removing finalizer from vm %s: %v", vm.Name, err)
