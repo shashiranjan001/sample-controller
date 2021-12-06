@@ -35,15 +35,16 @@ type VM struct {
 
 // VMSpec is the spec for a VM resource
 type VMSpec struct {
-	VMName   string `json:"name"`
-	Replicas *int32 `json:"replicas,omitempty"`
+	// +kubebuilder:validation:Required
+	VMName string `json:"vmName"`
 }
 
 // VMStatus is the status for a VM resource
 type VMStatus struct {
-	AvailableReplicas int32  `json:"availableReplicas,omitempty"`
-	VMID              string `json:"vmId,omitempty"`
-	CPUUtilization    int32  `json:"cpuUtilization,omitempty"`
+	VMID           string `json:"vmId,omitempty"`
+	CPUUtilization int32  `json:"cpuUtilization,omitempty"`
+	// NextSyncAt is UTC time at or after which the next sync should happen.
+	NextSyncAt *metav1.Time `json:"nextSyncAt,omitempty"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object

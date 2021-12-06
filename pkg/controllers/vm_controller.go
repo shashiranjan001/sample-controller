@@ -35,6 +35,7 @@ import (
 	"k8s.io/klog/v2"
 
 	samplev1alpha1 "k8s.io/sample-controller/pkg/apis/samplecontroller/v1alpha1"
+	"k8s.io/sample-controller/pkg/cloud"
 	clientset "k8s.io/sample-controller/pkg/generated/clientset/versioned"
 	samplescheme "k8s.io/sample-controller/pkg/generated/clientset/versioned/scheme"
 	informers "k8s.io/sample-controller/pkg/generated/informers/externalversions/samplecontroller/v1alpha1"
@@ -49,6 +50,10 @@ const (
 	// MessageResourceSynced is the message used for an Event fired when a VM
 	// is synced successfully
 	MessageResourceSynced = "VM synced successfully"
+)
+
+const (
+	VMSyncPeriod = time.Second * 30
 )
 
 // Controller is the controller implementation for VM resources
@@ -99,6 +104,13 @@ func NewController(
 	vmInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: controller.enqueueVM,
 		UpdateFunc: func(old, new interface{}) {
+			newVM := new.(*samplev1alpha1.VM)
+			oldVM := old.(*samplev1alpha1.VM)
+			if newVM.ResourceVersion == oldVM.ResourceVersion {
+				// Periodic resync will send update events for all known Deployments.
+				// Two different versions of the same Deployment will always have different RVs.
+				return
+			}
 			controller.enqueueVM(new)
 		},
 	})
@@ -126,7 +138,7 @@ func (c *Controller) Run(workers int, stopCh <-chan struct{}) error {
 	klog.Info("Starting workers")
 	// Launch two workers to process VM resources
 	for i := 0; i < workers; i++ {
-		go wait.Until(c.runWorker, time.Second, stopCh)
+		go wait.Until(c.runWorker, 30*time.Second, stopCh)
 	}
 
 	klog.Info("Started workers")
@@ -219,23 +231,12 @@ func (c *Controller) syncHandler(key string) error {
 			utilruntime.HandleError(fmt.Errorf("vm '%s' in work queue no longer exists", key))
 			return nil
 		}
-
 		return err
 	}
-
-	deploymentName := vm.Spec.VMName
-	if deploymentName == "" {
-		// We choose to absorb the error here as the worker would requeue the
-		// resource otherwise. Instead, the next time the resource is updated
-		// the resource will be queued again.
-		utilruntime.HandleError(fmt.Errorf("%s: deployment name must be specified", key))
+	if vm.Status.NextSyncAt != nil && !vm.Status.NextSyncAt.Before(toMetaV1Time(time.Now().UTC())) {
 		return nil
 	}
-
-	// Finally, we update the status block of the VM resource to reflect the
-	// current state of the world
-	err = c.updateVMStatus(vm)
-	if err != nil {
+	if err := c.vmHandler(vm); err != nil {
 		return err
 	}
 
@@ -243,16 +244,127 @@ func (c *Controller) syncHandler(key string) error {
 	return nil
 }
 
-func (c *Controller) updateVMStatus(vm *samplev1alpha1.VM) error {
-	// NEVER modify objects from the store. It's a read-only, local cache.
-	// You can use DeepCopy() to make a deep copy of original object and modify this copy
-	// Or create a copy manually for better performance
-	vmCopy := vm.DeepCopy()
+// Returns if requeue is needed, and error.
+func (c *Controller) vmHandler(vm *samplev1alpha1.VM) error {
+	vmID := vm.Status.VMID
+	if vmID == "" {
+		return c.createVM(vm)
+	}
+	return c.syncVMStatus(vm)
+}
+
+// GetUTCTimeNow return current UTC time as metav1.Time type.
+func toMetaV1Time(t time.Time) *metav1.Time {
+	return &metav1.Time{
+		Time: t,
+	}
+}
+
+// createVM tries to create the VM by calling the Cloud API endpoints and returns error
+// if the creation failed, and we need to retry.
+func (c *Controller) createVM(vm *samplev1alpha1.VM) error {
+	ok, err := cloud.IsNameValid(vm.Name)
+	if err != nil {
+		cerr := cloud.ToCloudError(err)
+		if cerr == nil {
+			// Retry for intermittent errors.
+			return err
+		}
+		// In case the server is down or misbehaving, we do not retry.
+		// We also do not retry if the VM name is already in use.
+		utilruntime.HandleError(err)
+		return nil
+	}
+	if !ok {
+		utilruntime.HandleError(fmt.Errorf("VM name is not valid"))
+		return nil
+	}
+	cvm, err := cloud.CreateVM(vm.Name)
+	if err != nil {
+		cerr := cloud.ToCloudError(err)
+		if cerr == nil {
+			// Intermittent errors, retry
+			return err
+		}
+		// In case the server is down or misbehaving, we do not retry.
+		// We also do not retry if the VM name is already in use.
+		utilruntime.HandleError(err)
+		return nil
+	}
+	vmStatus := samplev1alpha1.VMStatus{
+		VMID: cvm.ID,
+	}
+	// Doing a slighlty expensive call for newly created VMs to minimize conflict.
+	if err := c.updateLatestVMStatus(vm, vmStatus); err != nil {
+		// This is a tricky part. If the VM is created in the cloud,
+		// but we fail to update CR status, then we lose track of the created VM.
+		// Retry won't not help here, because cloud API would return http.StatusConflict.
+		utilruntime.HandleError(err)
+		return nil
+	}
+	// Enqueue VM for the perioding syncing of the Status.
+	c.enqueueVMAfter(vm, VMSyncPeriod)
+	return nil
+}
+
+func (c *Controller) syncVMStatus(vm *samplev1alpha1.VM) error {
+	if vm.Status.VMID == "" {
+		utilruntime.HandleError(fmt.Errorf("Cannot sync VM status from cloud, VM ID is empty in CR status"))
+	}
+	cvmStatus, err := cloud.GetVMStatus(vm.Status.VMID)
+	if err != nil {
+		cerr := cloud.ToCloudError(err)
+		if cerr == nil {
+			// Retry for intermittent errors.
+			return err
+		}
+		// In case the server is down or misbehaving, we do not retry.
+		// We also do not retry if the VM is not found in the cloud.
+		utilruntime.HandleError(err)
+		return nil
+	}
+	nextSyncAt := toMetaV1Time(time.Now().UTC().Add(VMSyncPeriod))
+	vmStatus := samplev1alpha1.VMStatus{
+		VMID:           vm.Status.VMID,
+		CPUUtilization: cvmStatus.CPUUtilization,
+		NextSyncAt:     nextSyncAt,
+	}
+	// We ignore errors while updating VM status because this is periodic resync.
+	if err = c.updateVMStatus(vm, vmStatus); err != nil {
+		klog.Info("Error syncing VM status: %s", err.Error())
+	}
+	// Enqueue VM for the perioding syncing of the Status.
+	c.enqueueVMAfter(vm, VMSyncPeriod)
+	return nil
+}
+
+func (c *Controller) updateLatestVMStatus(vm *samplev1alpha1.VM, vmStatus samplev1alpha1.VMStatus) error {
+	// Fetching the latest VM from client set, so that we have minimal chances of conflict.
+	vmLatest, err := c.sampleclientset.SamplecontrollerV1alpha1().VMs(vm.Namespace).Get(context.Background(), vm.Name, metav1.GetOptions{})
+	if err != nil {
+		return err
+	}
+	vmLatest.Status = vmStatus
 	// If the CustomResourceSubresources feature gate is not enabled,
 	// we must use Update instead of UpdateStatus to update the Status block of the VM resource.
 	// UpdateStatus will not allow changes to the Spec of the resource,
 	// which is ideal for ensuring nothing other than resource status has been updated.
-	_, err := c.sampleclientset.SamplecontrollerV1alpha1().VMs(vm.Namespace).Update(context.TODO(), vmCopy, metav1.UpdateOptions{})
+	_, err = c.sampleclientset.SamplecontrollerV1alpha1().VMs(vm.Namespace).UpdateStatus(context.TODO(), vmLatest, metav1.UpdateOptions{})
+	return err
+}
+
+func (c *Controller) updateVMStatus(vm *samplev1alpha1.VM, vmStatus samplev1alpha1.VMStatus) error {
+	// NEVER modify objects from the store. It's a read-only, local cache.
+	// You can use DeepCopy() to make a deep copy of original object and modify this copy
+	// Or create a copy manually for better performance
+	vmCopy := vm.DeepCopy()
+	vmCopy.Status = vmStatus
+	// If the CustomResourceSubresources feature gate is not enabled,
+	// we must use Update instead of UpdateStatus to update the Status block of the VM resource.
+	// UpdateStatus will not allow changes to the Spec of the resource,
+	// which is ideal for ensuring nothing other than resource status has been updated.
+	x, err := c.sampleclientset.SamplecontrollerV1alpha1().VMs(vm.Namespace).UpdateStatus(context.TODO(), vmCopy, metav1.UpdateOptions{})
+	klog.Info(x.Status.CPUUtilization)
 	return err
 }
 
@@ -267,4 +379,15 @@ func (c *Controller) enqueueVM(obj interface{}) {
 		return
 	}
 	c.workqueue.Add(key)
+}
+
+// enqueueVMAfter is like enqueueVM, but it enqueues the VM object after a given duration of time.
+func (c *Controller) enqueueVMAfter(obj interface{}, d time.Duration) {
+	var key string
+	var err error
+	if key, err = cache.MetaNamespaceKeyFunc(obj); err != nil {
+		utilruntime.HandleError(err)
+		return
+	}
+	c.workqueue.AddAfter(key, d)
 }

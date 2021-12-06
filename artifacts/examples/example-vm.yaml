@@ -3,5 +3,4 @@ kind: VM
 metadata:
   name: example-vm
 spec:
-  deploymentName: example-vm
-  replicas: 1
+  vmName: example-vm

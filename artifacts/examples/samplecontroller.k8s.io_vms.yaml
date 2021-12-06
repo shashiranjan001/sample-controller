@@ -31,23 +31,21 @@ spec:
             spec:
               description: VMSpec is the spec for a VM resource
               properties:
-                name:
+                vmName:
                   type: string
-                replicas:
-                  format: int32
-                  type: integer
               required:
-                - name
+                - vmName
               type: object
             status:
               description: VMStatus is the status for a VM resource
               properties:
-                availableReplicas:
-                  format: int32
-                  type: integer
                 cpuUtilization:
                   format: int32
                   type: integer
+                nextSyncAt:
+                  description: NextSyncAt is UTC time at or after which the next sync should happen.
+                  format: date-time
+                  type: string
                 vmId:
                   type: string
               type: object

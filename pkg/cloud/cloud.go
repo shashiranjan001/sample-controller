@@ -17,6 +17,49 @@ var CloudAPIErrors = map[int]string{
 	http.StatusForbidden:           "CloudAPIForbiddenError",
 }
 
+type CloudAPIError struct {
+	StatusCode    int
+	Message       string
+	isCodeUnknown bool
+}
+
+func (e CloudAPIError) Error() string {
+	return fmt.Sprintf("CloudAPIError( Code: %d, Message: '%s' )", e.StatusCode, e.Message)
+}
+
+func (e CloudAPIError) IsCodeUnknown() bool {
+	return e.isCodeUnknown
+}
+
+func newCloudAPIError(statusCode int, body string) error {
+	return CloudAPIError{
+		StatusCode:    statusCode,
+		Message:       fmt.Sprintf("Cloud API returned error message: %s", body),
+		isCodeUnknown: false,
+	}
+}
+
+func newUnknownCloudAPIError(statusCode int) error {
+	return CloudAPIError{
+		StatusCode:    statusCode,
+		Message:       "Cloud API server misbehaving, it has returned unexpected error code",
+		isCodeUnknown: true,
+	}
+}
+
+// GetCloudErrorCode checks if the underlying error is of cloudAPIError type.
+// In case it is of cloudAPIError type, it returns the error, else it returns nil.
+func ToCloudError(err error) *CloudAPIError {
+	if err == nil {
+		return nil
+	}
+	cerr, ok := err.(CloudAPIError)
+	if !ok {
+		return nil
+	}
+	return &cerr
+}
+
 const (
 	UnexpectedCloudAPIResponseStatus = "UnexpectedCloudAPIResponseStatus"
 )
@@ -52,8 +95,8 @@ func CreateVM(name string) (*VM, error) {
 
 	switch res.StatusCode {
 	case http.StatusInternalServerError, http.StatusConflict:
-		err = fmt.Errorf("Error: %s, Message: %s", CloudAPIErrors[res.StatusCode], string(bodyBytes))
-		klog.Errorf("Failure message from cloud: %s", err.Error())
+		err = newCloudAPIError(res.StatusCode, string(bodyBytes))
+		klog.Errorf("Cloud API call failed: %s", err.Error())
 		return nil, err
 
 	case http.StatusCreated:
@@ -68,8 +111,8 @@ func CreateVM(name string) (*VM, error) {
 		return &vm, nil
 
 	default:
-		klog.Errorf("%s: %d", UnexpectedCloudAPIResponseStatus, res.StatusCode)
-		err = fmt.Errorf("%s: %d", UnexpectedCloudAPIResponseStatus, res.StatusCode)
+		err = newUnknownCloudAPIError(res.StatusCode)
+		klog.Errorf(err.Error())
 		return nil, err
 	}
 }
@@ -90,21 +133,21 @@ func IsNameValid(name string) (bool, error) {
 
 	switch res.StatusCode {
 	case http.StatusInternalServerError, http.StatusNotFound:
-		err = fmt.Errorf("Error: %s, Message: %s", CloudAPIErrors[res.StatusCode], string(bodyBytes))
-		klog.Errorf("Failure message from cloud: %s", err.Error())
+		err = newCloudAPIError(res.StatusCode, string(bodyBytes))
+		klog.Errorf("Cloud API call failed: %s", err.Error())
 		return false, err
 
 	case http.StatusForbidden:
-		err = fmt.Errorf("Error: %s, Message: %s", CloudAPIErrors[res.StatusCode], string(bodyBytes))
-		klog.Errorf("Failure message from cloud: %s", err.Error())
+		err = newCloudAPIError(res.StatusCode, string(bodyBytes))
+		klog.Errorf("Cloud API call failed: %s", err.Error())
 		return false, nil
 
 	case http.StatusOK:
 		return true, nil
 
 	default:
-		klog.Errorf("%s: %d", UnexpectedCloudAPIResponseStatus, res.StatusCode)
-		err = fmt.Errorf("%s: %d", UnexpectedCloudAPIResponseStatus, res.StatusCode)
+		err = newUnknownCloudAPIError(res.StatusCode)
+		klog.Errorf(err.Error())
 		return false, err
 	}
 }
@@ -124,8 +167,8 @@ func GetVMStatus(id string) (*VMStatus, error) {
 
 	switch res.StatusCode {
 	case http.StatusInternalServerError, http.StatusNotFound:
-		err = fmt.Errorf("Error: %s, Message: %s", CloudAPIErrors[res.StatusCode], string(bodyBytes))
-		klog.Errorf("Failure message from cloud: %s", err.Error())
+		err = newCloudAPIError(res.StatusCode, string(bodyBytes))
+		klog.Errorf("Cloud API call failed: %s", err.Error())
 		return nil, err
 
 	case http.StatusOK:
@@ -140,8 +183,8 @@ func GetVMStatus(id string) (*VMStatus, error) {
 		return &vmStatus, nil
 
 	default:
-		klog.Errorf("%s: %d", UnexpectedCloudAPIResponseStatus, res.StatusCode)
-		err = fmt.Errorf("%s: %d", UnexpectedCloudAPIResponseStatus, res.StatusCode)
+		err = newUnknownCloudAPIError(res.StatusCode)
+		klog.Errorf(err.Error())
 		return nil, err
 	}
 }
@@ -164,8 +207,8 @@ func DeleteVM(id string) error {
 
 	switch res.StatusCode {
 	case http.StatusInternalServerError:
-		err = fmt.Errorf("Error: %s", CloudAPIErrors[res.StatusCode])
-		klog.Errorf("Failure message from cloud: %s", err.Error())
+		err = newCloudAPIError(res.StatusCode, "")
+		klog.Errorf("Cloud API call failed: %s", err.Error())
 		return err
 
 	case http.StatusNoContent:
@@ -173,8 +216,8 @@ func DeleteVM(id string) error {
 		return nil
 
 	default:
-		klog.Errorf("%s: %d", UnexpectedCloudAPIResponseStatus, res.StatusCode)
-		err = fmt.Errorf("%s: %d", UnexpectedCloudAPIResponseStatus, res.StatusCode)
+		err = newUnknownCloudAPIError(res.StatusCode)
+		klog.Errorf(err.Error())
 		return err
 	}
 }
