@@ -1,90 +1,99 @@
 package controllers
 
-// import (
-// 	"context"
+import (
+	"context"
+	"time"
 
-// 	log "github.com/sirupsen/logrus"
-// 	"k8s.io/sample-controller/internal/config"
+	log "github.com/sirupsen/logrus"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/tools/leaderelection"
+	"k8s.io/client-go/tools/leaderelection/resourcelock"
+	"k8s.io/sample-controller/internal/config"
+	clientset "k8s.io/sample-controller/pkg/generated/clientset/versioned"
+	informers "k8s.io/sample-controller/pkg/generated/informers/externalversions"
+)
 
-// 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-// 	"k8s.io/client-go/kubernetes"
-// 	"k8s.io/client-go/tools/leaderelection"
-// 	"k8s.io/client-go/tools/leaderelection/resourcelock"
-// )
+type Runner struct {
+	kubeClient    *kubernetes.Clientset
+	exampleClient *clientset.Clientset
+	config        config.Config
+	logger        *log.Entry
+}
 
-// type Runner struct {
-// 	ctrl      *Controller
-// 	clientset *kubernetes.Clientset
-// 	config    config.Config
-// 	logger    log.Entry
-// }
+func (r *Runner) Start(ctx context.Context) {
+	if r.config.HA.Enabled {
+		r.logger.Info("starting HA controller")
+		r.runHA(ctx)
+	} else {
+		r.logger.Info("starting standalone controller")
+		r.runSingleNode(ctx)
+	}
+}
 
-// func (r *Runner) Start(ctx context.Context) {
-// 	if r.config.HA.Enabled {
-// 		r.logger.Info("starting HA controller")
-// 		r.runHA(ctx)
-// 	} else {
-// 		r.logger.Info("starting standalone controller")
-// 		r.runSingleNode(ctx)
-// 	}
-// }
+func (r *Runner) runSingleNode(ctx context.Context) {
+	logger := r.logger.WithContext(ctx)
+	exampleInformerFactory := informers.NewSharedInformerFactory(r.exampleClient, time.Second*30)
 
-// func (r *Runner) runSingleNode(ctx context.Context) {
-// 	// if err := r.ctrl.Run(3, ctx.Done()); err != nil {
-// 	// 	log.Fatalf("error running controller: %s", err)
-// 	// }
-// }
+	controller := NewController(r.kubeClient, r.exampleClient,
+		exampleInformerFactory.Samplecontroller().V1alpha1().VMs(), logger)
+	exampleInformerFactory.Start(logger.Context.Done())
 
-// func (r *Runner) runHA() {
-// 	if !r.config.HA.Enabled {
-// 		log.Fatalf("HA config not set or not enabled")
-// 	}
+	if err := controller.Run(logger, 1); err != nil {
+		logger.Fatalf("Error running controller: %s", err)
+	}
+}
 
-// 	lock := &resourcelock.LeaseLock{
-// 		LeaseMeta: metav1.ObjectMeta{
-// 			Name:      r.config.HA.LeaseLockName,
-// 			Namespace: r.config.Namespace,
-// 		},
-// 		Client: r.clientset.CoordinationV1(),
-// 		LockConfig: resourcelock.ResourceLockConfig{
-// 			Identity: r.config.HA.NodeId,
-// 		},
-// 	}
-// 	leaderelection.RunOrDie(r.logger.Context, leaderelection.LeaderElectionConfig{
-// 		Lock:            lock,
-// 		ReleaseOnCancel: true,
-// 		LeaseDuration:   r.config.HA.LeaseDuration,
-// 		RenewDeadline:   r.config.HA.RenewDeadline,
-// 		RetryPeriod:     r.config.HA.RetryPeriod,
-// 		Callbacks: leaderelection.LeaderCallbacks{
-// 			OnStartedLeading: func(ctx context.Context) {
-// 				log.Info("started leading")
-// 				r.runSingleNode(ctx)
-// 			},
-// 			OnStoppedLeading: func() {
-// 				log.Info("stopped leading")
-// 			},
-// 			OnNewLeader: func(nodeId string) {
-// 				if nodeId == r.config.HA.NodeId {
-// 					log.Info("obtained leadership")
-// 					return
-// 				}
-// 				log.WithFields(log.Fields{"leaderNodeId": nodeId}).Info("leader elected")
-// 			},
-// 		},
-// 	})
-// }
+func (r *Runner) runHA(ctx context.Context) {
+	if !r.config.HA.Enabled {
+		log.Fatalf("HA config not set or not enabled")
+	}
 
-// func NewRunner(
-// 	ctrl *Controller,
-// 	clientset *kubernetes.Clientset,
-// 	config config.Config,
-// 	logger log.Entry,
-// ) *Runner {
-// 	return &Runner{
-// 		ctrl:      ctrl,
-// 		clientset: clientset,
-// 		config:    config,
-// 		logger:    logger,
-// 	}
-// }
+	lock := &resourcelock.LeaseLock{
+		LeaseMeta: metav1.ObjectMeta{
+			Name:      r.config.HA.LeaseLockName,
+			Namespace: r.config.Namespace,
+		},
+		Client: r.kubeClient.CoordinationV1(),
+		LockConfig: resourcelock.ResourceLockConfig{
+			Identity: r.config.HA.NodeId,
+		},
+	}
+	leaderelection.RunOrDie(ctx, leaderelection.LeaderElectionConfig{
+		Lock:            lock,
+		ReleaseOnCancel: true,
+		LeaseDuration:   r.config.HA.LeaseDuration,
+		RenewDeadline:   r.config.HA.RenewDeadline,
+		RetryPeriod:     r.config.HA.RetryPeriod,
+		Callbacks: leaderelection.LeaderCallbacks{
+			OnStartedLeading: func(ctx context.Context) {
+				log.Info("started leading")
+				r.runSingleNode(ctx)
+			},
+			OnStoppedLeading: func() {
+				log.Info("stopped leading")
+			},
+			OnNewLeader: func(nodeId string) {
+				if nodeId == r.config.HA.NodeId {
+					log.Info("obtained leadership")
+					return
+				}
+				log.WithFields(log.Fields{"leaderNodeId": nodeId}).Info("leader elected")
+			},
+		},
+	})
+}
+
+func NewRunner(
+	exampleClient *clientset.Clientset,
+	kubeClient *kubernetes.Clientset,
+	config config.Config,
+	logger *log.Entry,
+) *Runner {
+	return &Runner{
+		exampleClient: exampleClient,
+		kubeClient:    kubeClient,
+		config:        config,
+		logger:        logger,
+	}
+}

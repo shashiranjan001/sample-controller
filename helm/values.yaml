@@ -4,6 +4,8 @@ env: production
 
 numWorkers: 4
 
+cloudApiUrl: http://127.0.0.1:9001
+
 ha:
   enabled: true
   leaderElection:

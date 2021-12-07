@@ -6,7 +6,9 @@ metadata:
   labels:
     control-plane: sample-controller
 spec:
+  {{ if .Values.ha.enabled}}
   replicas: {{ .Values.replicas }}
+  {{ end }}
   selector:
     matchLabels:
       control-plane: sample-controller
@@ -21,7 +23,7 @@ spec:
         image: "nascarsayan/sample-controller:latest"
         imagePullPolicy: Always
         ports:
-        - containerPort: 8080
+        - containerPort: 8000
           name: metrics
           protocol: TCP
         resources:

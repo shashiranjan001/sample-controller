@@ -17,4 +17,4 @@ data:
   METRICS_PATH: {{ .Values.monitoring.path }}
   METRICS_PORT: {{ .Values.monitoring.port | quote }}
   {{ end }}
-  ENV: {{ .Values.env }}
+  CLOUD_API_URL: {{ .Values.cloudApiUrl }}

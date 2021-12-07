@@ -18,12 +18,10 @@ package main
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
 	log "github.com/sirupsen/logrus"
 	"k8s.io/client-go/kubernetes"
@@ -32,12 +30,7 @@ import (
 	"k8s.io/sample-controller/internal/config"
 	"k8s.io/sample-controller/pkg/controllers"
 	clientset "k8s.io/sample-controller/pkg/generated/clientset/versioned"
-	informers "k8s.io/sample-controller/pkg/generated/informers/externalversions"
-)
-
-var (
-	masterURL  string
-	kubeconfig string
+	"k8s.io/sample-controller/pkg/metrics"
 )
 
 func main() {
@@ -57,7 +50,7 @@ func main() {
 	if err != nil {
 		panic(fmt.Errorf("error getting config: %w", err))
 	}
-	logger := getLogger(config, ctx)
+	logger := getLogger(config)
 
 	var cfg *rest.Config
 	var errKubeConfig error
@@ -80,27 +73,27 @@ func main() {
 		logger.Fatalf("Error building example clientset: %s", err)
 	}
 
-	exampleInformerFactory := informers.NewSharedInformerFactory(exampleClient, time.Second*30)
-	controller := controllers.NewController(kubeClient, exampleClient,
-		exampleInformerFactory.Samplecontroller().V1alpha1().VMs(), logger)
-
-	exampleInformerFactory.Start(ctx.Done())
-
-	if err = controller.Run(logger, 1); err != nil {
-		logger.Fatalf("Error running controller: %s", err)
+	if config.Metrics.Enabled {
+		m := metrics.New(
+			metrics.Options{
+				Path: config.Metrics.Path,
+				Port: config.Metrics.Port,
+			},
+			logger.WithFields(log.Fields{"type": "metrics"}),
+		)
+		go m.Start()
+		defer m.Stop()
 	}
-}
 
-func init() {
-	flag.StringVar(&kubeconfig, "kubeconfig", "", "Path to a kubeconfig. Only required if out-of-cluster.")
-	flag.StringVar(&masterURL, "master", "", "The address of the Kubernetes API server. Overrides any value in kubeconfig. Only required if out-of-cluster.")
+	r := controllers.NewRunner(exampleClient, kubeClient, config, logger)
+	r.Start(ctx)
 }
 
 // GetLogger return a logrus loggerwith context.
-func getLogger(config config.Config, ctx context.Context) *log.Entry {
+func getLogger(config config.Config) *log.Entry {
 	// Log as JSON instead of the default ASCII formatter.
 	log.SetFormatter(&log.JSONFormatter{})
-	logger := log.WithContext(ctx).WithFields(log.Fields{"service": "sample-controller"})
+	logger := log.WithFields(log.Fields{"service": "sample-controller"})
 	if config.HA.Enabled {
 		logger = logger.WithFields(log.Fields{"nodeId": config.HA.NodeId})
 	}

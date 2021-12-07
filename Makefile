@@ -10,7 +10,7 @@ endif
 all: vendor codegen manifests build
 
 run:
-	./sample-controller -kubeconfig=$(HOME)/.kube/config.d/km
+	./sample-controller
 
 vendor: tidy
 	go mod vendor
