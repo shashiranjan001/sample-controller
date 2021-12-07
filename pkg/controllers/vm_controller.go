@@ -17,10 +17,11 @@ limitations under the License.
 package controllers
 
 import (
-	"context"
 	"fmt"
 	"time"
 
+	"github.com/gotway/gotway/pkg/env"
+	log "github.com/sirupsen/logrus"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -32,7 +33,6 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
-	"k8s.io/klog/v2"
 
 	samplev1alpha1 "k8s.io/sample-controller/pkg/apis/samplecontroller/v1alpha1"
 	"k8s.io/sample-controller/pkg/cloud"
@@ -52,9 +52,11 @@ const (
 	MessageResourceSynced = "VM synced successfully"
 )
 
-const (
-	VMSyncPeriod = time.Second * 30
-)
+var VMSyncPeriod time.Duration
+
+func init() {
+	VMSyncPeriod = env.GetDuration("VM_SYNC_DURATION_SECONDS", 30) * time.Second
+}
 
 // Controller is the controller implementation for VM resources
 type Controller struct {
@@ -79,13 +81,15 @@ type Controller struct {
 func NewController(
 	kubeclientset kubernetes.Interface,
 	sampleclientset clientset.Interface,
-	vmInformer informers.VMInformer) *Controller {
+	vmInformer informers.VMInformer,
+	logger *log.Entry,
+) *Controller {
 
 	// Create event broadcaster
 	// Add sample-controller types to the default Kubernetes Scheme so Events can be
 	// logged for sample-controller types.
 	utilruntime.Must(samplescheme.AddToScheme(scheme.Scheme))
-	klog.V(4).Info("Creating event broadcaster")
+	logger.Info("Creating event broadcaster")
 	eventBroadcaster := record.NewBroadcaster()
 	eventBroadcaster.StartStructuredLogging(0)
 	eventBroadcaster.StartRecordingToSink(&typedcorev1.EventSinkImpl{Interface: kubeclientset.CoreV1().Events("")})
@@ -99,7 +103,7 @@ func NewController(
 		recorder:        recorder,
 	}
 
-	klog.Info("Setting up event handlers")
+	logger.Info("Setting up event handlers")
 	// Set up an event handler for when VM resources change
 	vmInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: controller.enqueueVM,
@@ -123,28 +127,28 @@ func NewController(
 // as syncing informer caches and starting workers. It will block until stopCh
 // is closed, at which point it will shutdown the workqueue and wait for
 // workers to finish processing their current work items.
-func (c *Controller) Run(workers int, stopCh <-chan struct{}) error {
+func (c *Controller) Run(l *log.Entry, workers int) error {
 	defer utilruntime.HandleCrash()
 	defer c.workqueue.ShutDown()
 
 	// Start the informer factories to begin populating the informer caches
-	klog.Info("Starting VM controller")
+	l.Info("Starting VM controller")
 
 	// Wait for the caches to be synced before starting workers
-	klog.Info("Waiting for informer caches to sync")
-	if ok := cache.WaitForCacheSync(stopCh, c.vmsSynced); !ok {
+	l.Info("Waiting for informer caches to sync")
+	if ok := cache.WaitForCacheSync(l.Context.Done(), c.vmsSynced); !ok {
 		return fmt.Errorf("failed to wait for caches to sync")
 	}
 
-	klog.Info("Starting workers")
+	l.Info("Starting workers")
 	// Launch two workers to process VM resources
 	for i := 0; i < workers; i++ {
-		go wait.Until(c.runWorker, 30*time.Second, stopCh)
+		go wait.Until(func() { c.runWorker(l) }, 30*time.Second, l.Context.Done())
 	}
 
-	klog.Info("Started workers")
-	<-stopCh
-	klog.Info("Shutting down workers")
+	l.Info("Started workers")
+	<-l.Context.Done()
+	l.Info("Shutting down workers")
 
 	return nil
 }
@@ -152,14 +156,14 @@ func (c *Controller) Run(workers int, stopCh <-chan struct{}) error {
 // runWorker is a long-running function that will continually call the
 // processNextWorkItem function in order to read and process a message on the
 // workqueue.
-func (c *Controller) runWorker() {
-	for c.processNextWorkItem() {
+func (c *Controller) runWorker(l *log.Entry) {
+	for c.processNextWorkItem(l) {
 	}
 }
 
 // processNextWorkItem will read a single work item off the workqueue and
 // attempt to process it, by calling the syncHandler.
-func (c *Controller) processNextWorkItem() bool {
+func (c *Controller) processNextWorkItem(l *log.Entry) bool {
 	obj, shutdown := c.workqueue.Get()
 
 	if shutdown {
@@ -192,7 +196,7 @@ func (c *Controller) processNextWorkItem() bool {
 		}
 		// Run the syncHandler, passing it the namespace/name string of the
 		// VM resource to be synced.
-		if err := c.syncHandler(key); err != nil {
+		if err := c.syncHandler(l, key); err != nil {
 			// Put the item back on the workqueue to handle any transient errors.
 			c.workqueue.AddRateLimited(key)
 			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
@@ -200,7 +204,7 @@ func (c *Controller) processNextWorkItem() bool {
 		// Finally, if no error occurs we Forget this item so it does not
 		// get queued again until another change happens.
 		c.workqueue.Forget(obj)
-		klog.Infof("Successfully synced '%s'", key)
+		l.Infof("Successfully synced '%s'", key)
 		return nil
 	}(obj)
 
@@ -215,8 +219,10 @@ func (c *Controller) processNextWorkItem() bool {
 // syncHandler compares the actual state with the desired, and attempts to
 // converge the two. It then updates the Status block of the VM resource
 // with the current status of the resource.
-func (c *Controller) syncHandler(key string) error {
+func (c *Controller) syncHandler(l *log.Entry, key string) error {
 	// Convert the namespace/name string into a distinct namespace and name
+	l = l.WithFields(log.Fields{"Key": key})
+
 	namespace, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {
 		utilruntime.HandleError(fmt.Errorf("invalid resource key: %s", key))
@@ -238,7 +244,7 @@ func (c *Controller) syncHandler(key string) error {
 		!vm.Status.NextSyncAt.Before(toMetaV1Time(time.Now().UTC())) {
 		return nil
 	}
-	if err := c.vmHandler(vm); err != nil {
+	if err := c.vmHandler(l, vm); err != nil {
 		return err
 	}
 
@@ -247,31 +253,33 @@ func (c *Controller) syncHandler(key string) error {
 }
 
 // Returns if requeue is needed, and error.
-func (c *Controller) vmHandler(vm *samplev1alpha1.VM) error {
+func (c *Controller) vmHandler(l *log.Entry, vm *samplev1alpha1.VM) error {
+	l = l.WithFields(log.Fields{"VMName": vm.Spec.VMName, "VMID": vm.Status.VMID})
+
 	if isDeletionCandidate(vm, samplev1alpha1.VMFinalizer) {
 		// VM should be deleted. Check if it's deleted and remove finalizer.
 		err := cloud.DeleteVM(vm.Spec.VMName)
 		if err != nil {
-			klog.Errorf("Failed to delete VM. Will retry")
+			l.Errorf("Failed to delete VM. Will retry")
 			return err
 		}
-		return c.removeFinalizer(vm)
+		return c.removeFinalizer(l, vm)
 	}
 
 	if needToAddFinalizer(vm, samplev1alpha1.VMFinalizer) {
-		return c.addFinalizer(vm)
+		return c.addFinalizer(l, vm)
 	}
 
 	vmID := vm.Status.VMID
 	if vmID == "" {
-		return c.createVM(vm)
+		return c.createVM(l, vm)
 	}
-	return c.syncVMStatus(vm)
+	return c.syncVMStatus(l, vm)
 }
 
 // createVM tries to create the VM by calling the Cloud API endpoints and returns error
 // if the creation failed, and we need to retry.
-func (c *Controller) createVM(vm *samplev1alpha1.VM) error {
+func (c *Controller) createVM(l *log.Entry, vm *samplev1alpha1.VM) error {
 	vmName := vm.Spec.VMName
 	ok, err := cloud.IsNameValid(vmName)
 	if err != nil {
@@ -305,7 +313,7 @@ func (c *Controller) createVM(vm *samplev1alpha1.VM) error {
 		VMID: cvm.ID,
 	}
 	// Doing a slighlty expensive call for newly created VMs to minimize conflict.
-	if err := c.updateLatestVMStatus(vm, vmStatus); err != nil {
+	if err := c.updateLatestVMStatus(l, vm, vmStatus); err != nil {
 		// This is a tricky part. If the VM is created in the cloud,
 		// but we fail to update CR status, then we lose track of the created VM.
 		// Retry won't not help here, because cloud API would return http.StatusConflict.
@@ -317,7 +325,7 @@ func (c *Controller) createVM(vm *samplev1alpha1.VM) error {
 	return nil
 }
 
-func (c *Controller) syncVMStatus(vm *samplev1alpha1.VM) error {
+func (c *Controller) syncVMStatus(l *log.Entry, vm *samplev1alpha1.VM) error {
 	if vm.Status.VMID == "" {
 		utilruntime.HandleError(fmt.Errorf(
 			"Cannot sync VM status from cloud, VM ID is empty in CR status"))
@@ -341,17 +349,19 @@ func (c *Controller) syncVMStatus(vm *samplev1alpha1.VM) error {
 		NextSyncAt:     nextSyncAt,
 	}
 	// We ignore errors while updating VM status because this is periodic resync.
-	if err = c.updateVMStatus(vm, vmStatus); err != nil {
-		klog.Info("Error syncing VM status: %s", err.Error())
-	}
+	_ = c.updateVMStatus(l, vm, vmStatus)
 	// Enqueue VM for the perioding syncing of the Status.
 	c.enqueueVMAfter(vm, VMSyncPeriod)
 	return nil
 }
 
-func (c *Controller) updateLatestVMStatus(vm *samplev1alpha1.VM, vmStatus samplev1alpha1.VMStatus) error {
+func (c *Controller) updateLatestVMStatus(
+	l *log.Entry,
+	vm *samplev1alpha1.VM,
+	vmStatus samplev1alpha1.VMStatus,
+) error {
 	// Fetching the latest VM from client set, so that we have minimal chances of conflict.
-	vmLatest, err := c.sampleclientset.SamplecontrollerV1alpha1().VMs(vm.Namespace).Get(context.Background(), vm.Name, metav1.GetOptions{})
+	vmLatest, err := c.sampleclientset.SamplecontrollerV1alpha1().VMs(vm.Namespace).Get(l.Context, vm.Name, metav1.GetOptions{})
 	if err != nil {
 		return err
 	}
@@ -360,11 +370,18 @@ func (c *Controller) updateLatestVMStatus(vm *samplev1alpha1.VM, vmStatus sample
 	// we must use Update instead of UpdateStatus to update the Status block of the VM resource.
 	// UpdateStatus will not allow changes to the Spec of the resource,
 	// which is ideal for ensuring nothing other than resource status has been updated.
-	_, err = c.sampleclientset.SamplecontrollerV1alpha1().VMs(vm.Namespace).UpdateStatus(context.Background(), vmLatest, metav1.UpdateOptions{})
+	_, err = c.sampleclientset.SamplecontrollerV1alpha1().VMs(vm.Namespace).UpdateStatus(l.Context, vmLatest, metav1.UpdateOptions{})
+	if err != nil {
+		l.Infof("Error syncing VM status: %s", err)
+	}
 	return err
 }
 
-func (c *Controller) updateVMStatus(vm *samplev1alpha1.VM, vmStatus samplev1alpha1.VMStatus) error {
+func (c *Controller) updateVMStatus(
+	l *log.Entry,
+	vm *samplev1alpha1.VM,
+	vmStatus samplev1alpha1.VMStatus,
+) error {
 	// NEVER modify objects from the store. It's a read-only, local cache.
 	// You can use DeepCopy() to make a deep copy of original object and modify this copy
 	// Or create a copy manually for better performance
@@ -374,7 +391,10 @@ func (c *Controller) updateVMStatus(vm *samplev1alpha1.VM, vmStatus samplev1alph
 	// we must use Update instead of UpdateStatus to update the Status block of the VM resource.
 	// UpdateStatus will not allow changes to the Spec of the resource,
 	// which is ideal for ensuring nothing other than resource status has been updated.
-	_, err := c.sampleclientset.SamplecontrollerV1alpha1().VMs(vm.Namespace).UpdateStatus(context.Background(), vmCopy, metav1.UpdateOptions{})
+	_, err := c.sampleclientset.SamplecontrollerV1alpha1().VMs(vm.Namespace).UpdateStatus(l.Context, vmCopy, metav1.UpdateOptions{})
+	if err != nil {
+		l.Infof("Error syncing VM status: %s", err)
+	}
 	return err
 }
 
@@ -402,30 +422,30 @@ func (c *Controller) enqueueVMAfter(obj interface{}, d time.Duration) {
 	c.workqueue.AddAfter(key, d)
 }
 
-func (c *Controller) addFinalizer(vm *samplev1alpha1.VM) error {
+func (c *Controller) addFinalizer(l *log.Entry, vm *samplev1alpha1.VM) error {
 	vmCopy := vm.DeepCopy()
 	addFinalizer(vmCopy, samplev1alpha1.VMFinalizer)
 	if vmCopy.Labels == nil {
 		vmCopy.Labels = make(map[string]string)
 	}
-	vm, err := c.sampleclientset.SamplecontrollerV1alpha1().VMs(vm.Namespace).Update(context.TODO(), vmCopy, metav1.UpdateOptions{})
+	_, err := c.sampleclientset.SamplecontrollerV1alpha1().VMs(vm.Namespace).Update(l.Context, vmCopy, metav1.UpdateOptions{})
 	if err != nil {
-		klog.V(3).Infof("Error adding finalizer to vm %s: %v", vm.Name, err)
+		l.Infof("Error adding finalizer to vm: %+v", err)
 		return err
 	}
-	klog.V(3).Infof("Added finalizer to vm %s", vm.Name)
+	l.Info("Added finalizer to vm")
 	return nil
 }
 
-func (c *Controller) removeFinalizer(vm *samplev1alpha1.VM) error {
+func (c *Controller) removeFinalizer(l *log.Entry, vm *samplev1alpha1.VM) error {
 	clone := vm.DeepCopy()
 	vm.GetFinalizers()
 	removeFinalizer(clone, samplev1alpha1.VMFinalizer)
-	vm, err := c.sampleclientset.SamplecontrollerV1alpha1().VMs(vm.Namespace).Update(context.TODO(), clone, metav1.UpdateOptions{})
+	_, err := c.sampleclientset.SamplecontrollerV1alpha1().VMs(vm.Namespace).Update(l.Context, clone, metav1.UpdateOptions{})
 	if err != nil {
-		klog.V(3).Infof("Error removing finalizer from vm %s: %v", vm.Name, err)
+		l.Infof("Error removing finalizer from vm: %+v", err)
 		return err
 	}
-	klog.V(3).Infof("Removed protection finalizer from vm %s", vm.Name)
+	l.Info("Removed protection finalizer from vm")
 	return nil
 }

@@ -1,112 +1,90 @@
 package controllers
 
-import (
-	"context"
-	"time"
+// import (
+// 	"context"
 
-	"k8s.io/klog/v2"
+// 	log "github.com/sirupsen/logrus"
+// 	"k8s.io/sample-controller/internal/config"
 
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/tools/leaderelection"
-	"k8s.io/client-go/tools/leaderelection/resourcelock"
-)
+// 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+// 	"k8s.io/client-go/kubernetes"
+// 	"k8s.io/client-go/tools/leaderelection"
+// 	"k8s.io/client-go/tools/leaderelection/resourcelock"
+// )
 
-type Config struct {
-	KubeConfig string
-	Namespace  string
-	NumWorkers int
-	HA         HA
-	Metrics    Metrics
-	Env        string
-	LogLevel   string
-}
+// type Runner struct {
+// 	ctrl      *Controller
+// 	clientset *kubernetes.Clientset
+// 	config    config.Config
+// 	logger    log.Entry
+// }
 
-type HA struct {
-	Enabled       bool
-	NodeId        string
-	LeaseLockName string
-	LeaseDuration time.Duration
-	RenewDeadline time.Duration
-	RetryPeriod   time.Duration
-}
+// func (r *Runner) Start(ctx context.Context) {
+// 	if r.config.HA.Enabled {
+// 		r.logger.Info("starting HA controller")
+// 		r.runHA(ctx)
+// 	} else {
+// 		r.logger.Info("starting standalone controller")
+// 		r.runSingleNode(ctx)
+// 	}
+// }
 
-type Metrics struct {
-	Enabled bool
-	Path    string
-	Port    string
-}
+// func (r *Runner) runSingleNode(ctx context.Context) {
+// 	// if err := r.ctrl.Run(3, ctx.Done()); err != nil {
+// 	// 	log.Fatalf("error running controller: %s", err)
+// 	// }
+// }
 
-type Runner struct {
-	ctrl      *Controller
-	clientset *kubernetes.Clientset
-	config    Config
-}
+// func (r *Runner) runHA() {
+// 	if !r.config.HA.Enabled {
+// 		log.Fatalf("HA config not set or not enabled")
+// 	}
 
-func (r *Runner) Start(ctx context.Context) {
-	if r.config.HA.Enabled {
-		klog.Info("starting HA controller")
-		r.runHA(ctx)
-	} else {
-		klog.Info("starting standalone controller")
-		r.runSingleNode(ctx)
-	}
-}
+// 	lock := &resourcelock.LeaseLock{
+// 		LeaseMeta: metav1.ObjectMeta{
+// 			Name:      r.config.HA.LeaseLockName,
+// 			Namespace: r.config.Namespace,
+// 		},
+// 		Client: r.clientset.CoordinationV1(),
+// 		LockConfig: resourcelock.ResourceLockConfig{
+// 			Identity: r.config.HA.NodeId,
+// 		},
+// 	}
+// 	leaderelection.RunOrDie(r.logger.Context, leaderelection.LeaderElectionConfig{
+// 		Lock:            lock,
+// 		ReleaseOnCancel: true,
+// 		LeaseDuration:   r.config.HA.LeaseDuration,
+// 		RenewDeadline:   r.config.HA.RenewDeadline,
+// 		RetryPeriod:     r.config.HA.RetryPeriod,
+// 		Callbacks: leaderelection.LeaderCallbacks{
+// 			OnStartedLeading: func(ctx context.Context) {
+// 				log.Info("started leading")
+// 				r.runSingleNode(ctx)
+// 			},
+// 			OnStoppedLeading: func() {
+// 				log.Info("stopped leading")
+// 			},
+// 			OnNewLeader: func(nodeId string) {
+// 				if nodeId == r.config.HA.NodeId {
+// 					log.Info("obtained leadership")
+// 					return
+// 				}
+// 				log.WithFields(log.Fields{"leaderNodeId": nodeId}).Info("leader elected")
+// 			},
+// 		},
+// 	})
+// }
 
-func (r *Runner) runSingleNode(ctx context.Context) {
-	if err := r.ctrl.Run(3, ctx.Done()); err != nil {
-		klog.Fatal("error running controller ", err)
-	}
-}
-
-func (r *Runner) runHA(ctx context.Context) {
-	if r.config.HA == (HA{}) || !r.config.HA.Enabled {
-		klog.Fatal("HA config not set or not enabled")
-	}
-
-	lock := &resourcelock.LeaseLock{
-		LeaseMeta: metav1.ObjectMeta{
-			Name:      r.config.HA.LeaseLockName,
-			Namespace: r.config.Namespace,
-		},
-		Client: r.clientset.CoordinationV1(),
-		LockConfig: resourcelock.ResourceLockConfig{
-			Identity: r.config.HA.NodeId,
-		},
-	}
-	leaderelection.RunOrDie(ctx, leaderelection.LeaderElectionConfig{
-		Lock:            lock,
-		ReleaseOnCancel: true,
-		LeaseDuration:   r.config.HA.LeaseDuration,
-		RenewDeadline:   r.config.HA.RenewDeadline,
-		RetryPeriod:     r.config.HA.RetryPeriod,
-		Callbacks: leaderelection.LeaderCallbacks{
-			OnStartedLeading: func(ctx context.Context) {
-				klog.Info("start leading")
-				r.runSingleNode(ctx)
-			},
-			OnStoppedLeading: func() {
-				klog.Info("stopped leading")
-			},
-			OnNewLeader: func(identity string) {
-				if identity == r.config.HA.NodeId {
-					klog.Info("obtained leadership")
-					return
-				}
-				klog.Infof("leader elected: '%s'", identity)
-			},
-		},
-	})
-}
-
-func NewRunner(
-	ctrl *Controller,
-	clientset *kubernetes.Clientset,
-	config Config,
-) *Runner {
-	return &Runner{
-		ctrl:      ctrl,
-		clientset: clientset,
-		config:    config,
-	}
-}
+// func NewRunner(
+// 	ctrl *Controller,
+// 	clientset *kubernetes.Clientset,
+// 	config config.Config,
+// 	logger log.Entry,
+// ) *Runner {
+// 	return &Runner{
+// 		ctrl:      ctrl,
+// 		clientset: clientset,
+// 		config:    config,
+// 		logger:    logger,
+// 	}
+// }

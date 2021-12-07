@@ -7,10 +7,16 @@ else
 GOBIN=$(shell go env GOBIN)
 endif
 
-all: codegen manifests build
+all: vendor codegen manifests build
 
 run:
 	./sample-controller -kubeconfig=$(HOME)/.kube/config.d/km
+
+vendor: tidy
+	go mod vendor
+
+tidy:
+	go mod tidy
 
 codegen:
 	./hack/update-codegen.sh

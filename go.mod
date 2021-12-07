@@ -6,6 +6,7 @@ go 1.16
 
 require (
 	github.com/gotway/gotway v0.0.11
+	github.com/sirupsen/logrus v1.8.1
 	k8s.io/api v0.0.0-20211203085948-25b7aa9e86de
 	k8s.io/apimachinery v0.0.0-20211203013834-5f072755815a
 	k8s.io/client-go v0.0.0-20211203090726-d85d0d914a32

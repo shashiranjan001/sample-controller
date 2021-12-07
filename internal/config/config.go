@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"time"
@@ -18,15 +19,8 @@ type HA struct {
 }
 
 func (c HA) String() string {
-	return fmt.Sprintf(
-		"HA{Enabled='%v'NodeId='%s'LeaseLockName='%s'LeaseDuration='%v'RenewDeadline='%v'RetryPeriod='%v'}",
-		c.Enabled,
-		c.NodeId,
-		c.LeaseLockName,
-		c.LeaseDuration,
-		c.RenewDeadline,
-		c.RetryPeriod,
-	)
+	s, _ := json.Marshal(c)
+	return string(s)
 }
 
 type Metrics struct {
@@ -36,12 +30,8 @@ type Metrics struct {
 }
 
 func (m Metrics) String() string {
-	return fmt.Sprintf(
-		"Metrics{Enabled='%v'Path='%s'Port='%s'}",
-		m.Enabled,
-		m.Path,
-		m.Port,
-	)
+	s, _ := json.Marshal(m)
+	return string(s)
 }
 
 type Config struct {
@@ -50,21 +40,11 @@ type Config struct {
 	NumWorkers int
 	HA         HA
 	Metrics    Metrics
-	Env        string
-	LogLevel   string
 }
 
 func (c Config) String() string {
-	return fmt.Sprintf(
-		"Config{KubeConfig='%s'Namespace='%s'NumWorkers='%d'HA='%v'Metrics='%v'Env='%s'LogLevel='%s'}",
-		c.KubeConfig,
-		c.Namespace,
-		c.NumWorkers,
-		c.HA,
-		c.Metrics,
-		c.Env,
-		c.LogLevel,
-	)
+	s, _ := json.Marshal(c)
+	return string(s)
 }
 
 func GetConfig() (Config, error) {
@@ -99,7 +79,5 @@ func GetConfig() (Config, error) {
 			Path:    env.Get("METRICS_PATH", "/metrics"),
 			Port:    env.Get("METRICS_PORT", "8000"),
 		},
-		Env:      env.Get("ENV", "local"),
-		LogLevel: env.Get("LOG_LEVEL", "debug"),
 	}, nil
 }

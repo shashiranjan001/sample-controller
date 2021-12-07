@@ -17,16 +17,22 @@ limitations under the License.
 package main
 
 import (
+	"context"
 	"flag"
+	"fmt"
+	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
+	log "github.com/sirupsen/logrus"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
-	"k8s.io/klog/v2"
+	"k8s.io/sample-controller/internal/config"
 	"k8s.io/sample-controller/pkg/controllers"
 	clientset "k8s.io/sample-controller/pkg/generated/clientset/versioned"
 	informers "k8s.io/sample-controller/pkg/generated/informers/externalversions"
-	"k8s.io/sample-controller/pkg/signals"
 )
 
 var (
@@ -35,41 +41,68 @@ var (
 )
 
 func main() {
-	klog.InitFlags(nil)
-	flag.Parse()
 
 	// set up signals so we handle the first shutdown signal gracefully
-	stopCh := signals.SetupSignalHandler()
+	ctx, cancel := signal.NotifyContext(context.Background(), []os.Signal{
+		os.Interrupt,
+		syscall.SIGINT,
+		syscall.SIGTERM,
+		syscall.SIGKILL,
+		syscall.SIGHUP,
+		syscall.SIGQUIT,
+	}...)
+	defer cancel()
 
-	cfg, err := clientcmd.BuildConfigFromFlags(masterURL, kubeconfig)
+	config, err := config.GetConfig()
 	if err != nil {
-		klog.Fatalf("Error building kubeconfig: %s", err.Error())
+		panic(fmt.Errorf("error getting config: %w", err))
+	}
+	logger := getLogger(config, ctx)
+
+	var cfg *rest.Config
+	var errKubeConfig error
+	if config.KubeConfig != "" {
+		cfg, errKubeConfig = clientcmd.BuildConfigFromFlags("", config.KubeConfig)
+	} else {
+		cfg, errKubeConfig = rest.InClusterConfig()
+	}
+	if errKubeConfig != nil {
+		logger.Fatalf("error getting kubernetes config: %s", errKubeConfig)
 	}
 
 	kubeClient, err := kubernetes.NewForConfig(cfg)
 	if err != nil {
-		klog.Fatalf("Error building kubernetes clientset: %s", err.Error())
+		logger.Fatalf("Error building kubernetes clientset: %s", err)
 	}
 
 	exampleClient, err := clientset.NewForConfig(cfg)
 	if err != nil {
-		klog.Fatalf("Error building example clientset: %s", err.Error())
+		logger.Fatalf("Error building example clientset: %s", err)
 	}
 
 	exampleInformerFactory := informers.NewSharedInformerFactory(exampleClient, time.Second*30)
 	controller := controllers.NewController(kubeClient, exampleClient,
-		exampleInformerFactory.Samplecontroller().V1alpha1().VMs())
+		exampleInformerFactory.Samplecontroller().V1alpha1().VMs(), logger)
 
-	// notice that there is no need to run Start methods in a separate goroutine. (i.e. go kubeInformerFactory.Start(stopCh)
-	// Start method is non-blocking and runs all registered informers in a dedicated goroutine.
-	exampleInformerFactory.Start(stopCh)
+	exampleInformerFactory.Start(ctx.Done())
 
-	if err = controller.Run(1, stopCh); err != nil {
-		klog.Fatalf("Error running controller: %s", err.Error())
+	if err = controller.Run(logger, 1); err != nil {
+		logger.Fatalf("Error running controller: %s", err)
 	}
 }
 
 func init() {
 	flag.StringVar(&kubeconfig, "kubeconfig", "", "Path to a kubeconfig. Only required if out-of-cluster.")
 	flag.StringVar(&masterURL, "master", "", "The address of the Kubernetes API server. Overrides any value in kubeconfig. Only required if out-of-cluster.")
+}
+
+// GetLogger return a logrus loggerwith context.
+func getLogger(config config.Config, ctx context.Context) *log.Entry {
+	// Log as JSON instead of the default ASCII formatter.
+	log.SetFormatter(&log.JSONFormatter{})
+	logger := log.WithContext(ctx).WithFields(log.Fields{"service": "sample-controller"})
+	if config.HA.Enabled {
+		logger = logger.WithFields(log.Fields{"nodeId": config.HA.NodeId})
+	}
+	return logger
 }

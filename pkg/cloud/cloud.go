@@ -7,11 +7,16 @@ import (
 	"io/ioutil"
 	"net/http"
 
+	"github.com/gotway/gotway/pkg/env"
 	"k8s.io/klog/v2"
 )
 
-// baseUrl is the REST API endpoint of the cloud.
-const baseUrl = "http://10.150.108.26:8080"
+// cloudAPIURL is the REST API endpoint of the cloud.
+var cloudAPIURL string
+
+func init() {
+	cloudAPIURL = env.Get("CLOUD_API_URL", "http://127.0.0.1:9001")
+}
 
 type CloudAPIError struct {
 	StatusCode    int
@@ -66,7 +71,7 @@ type VMStatus struct {
 }
 
 func CreateVM(name string) (*VM, error) {
-	url := baseUrl + "/servers"
+	url := cloudAPIURL + "/servers"
 	type bodyType struct {
 		Name string `json:"name"`
 	}
@@ -109,7 +114,7 @@ func CreateVM(name string) (*VM, error) {
 
 func IsNameValid(name string) (bool, error) {
 	// TODO: We can encode name to escape special characters.
-	url := baseUrl + "/check/" + name
+	url := cloudAPIURL + "/check/" + name
 	res, err := http.Get(url)
 	if err != nil {
 		klog.Errorf("Error while invoking %s: %s", url, err.Error())
@@ -143,7 +148,7 @@ func IsNameValid(name string) (bool, error) {
 }
 
 func GetVMStatus(id string) (*VMStatus, error) {
-	url := baseUrl + "/servers/" + id + "/status"
+	url := cloudAPIURL + "/servers/" + id + "/status"
 	res, err := http.Get(url)
 	if err != nil {
 		klog.Errorf("Error while invoking %s: %s", url, err.Error())
@@ -180,7 +185,7 @@ func GetVMStatus(id string) (*VMStatus, error) {
 }
 
 func DeleteVM(id string) error {
-	url := baseUrl + "/servers/" + id
+	url := cloudAPIURL + "/servers/" + id
 	req, err := http.NewRequest("DELETE", url, nil)
 	if err != nil {
 		klog.Errorf("Error while creating request %s: %s", url, err.Error())
