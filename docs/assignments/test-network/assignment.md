@@ -146,12 +146,12 @@ ii. The above command alone doesn't work because we haven't yet told the Bridge 
 
 
 ```sh
-ip netns exec my-overlay bridge fdb add $mac_address_of_c2 dev vxlan1 self dst $host_ip_address vni 42 port 4789
+ip netns exec my-overlay bridge fdb add $mac_address_of_c2 dev vxlan1 self dst $ip_address_of_host_running_c2 vni 42 port 4789
 ```
 
 - `dev vxlan1`: The device that is associated with the MAC address of c2.
 - `self`: The operation is fulfilled by VxLan itself.
-- `dst $host_ip_address`: The IP address of the destination VxLan tunnel endpoint from where we will able to reach the specified MAC address.
+- `dst $ip_address_of_host_running_c2`: The IP address of the destination VxLan tunnel endpoint from where we will able to reach the specified MAC address.
 - `vni 42`: The VxLan Network Identifier Number. This has to match the VNI of the VxLan we created in Step 2.
 - `port 4789`: The UDP port on which the remote VxLan tunnel endpoint is listening to.
 
