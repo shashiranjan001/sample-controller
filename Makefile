@@ -52,3 +52,11 @@ build:
 docker:
 	docker build . -t ${IMG}
 	docker push ${IMG}
+
+pdf: md2pdf
+	find docs/assignments -type f -name "*.md" | xargs md-to-pdf
+
+md2pdf:
+ifeq (, $(shell which md-to-pdf))
+	npm i -g md-to-pdf
+endif
