@@ -118,6 +118,9 @@ func NewController(
 			}
 			controller.enqueueVM(new)
 		},
+		// We don't need DeleteFunc because we are using finalizers. When finalizers are present,
+		// kubernetes modifies a delete call to an update call, and sets the DeletionTimestamp
+		// to the time when it received the DELETE call.
 	})
 
 	return controller
