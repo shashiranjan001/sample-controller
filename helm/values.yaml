@@ -1,24 +1,27 @@
+# The number of replicas to be created by the controller deployment.
 replicas: 3
 
-env: production
-
+# The number of workers (concurrent reconcilers).
 numWorkers: 4
 
+# The URL of the private cloud API endpoint.
 cloudApiUrl: http://127.0.0.1:9001
 
+# The time interval between two sync of a VM resource.
+vmResyncPeriodSeconds: 30
+
+# ha config. This will be applied only when replicas > 1
 ha:
-  enabled: true
+  # Leader election config values.
   leaderElection:
     leaseDurationSeconds: 15
     renewDeadlineSeconds: 10
     retryPeriodSeconds: 2
-  replicaCount: 3
 
 monitoring:
+  # Whether prometheus format metrics are enabled.
   enabled: true
+  # The endpoint where metrics will be published.
   path: /metrics
+  # The port at which metrics server will start.
   port: 8000
-  namespace: monitoring
-  interval: 10s
-  labels:
-    release: monitoring

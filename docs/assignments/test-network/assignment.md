@@ -35,7 +35,7 @@ pid=$(docker inspect c1_cid --format '{{.State.Pid}}')
 ```
 
 iv. Create a link to the namespace of the running container c1 to a host namespace `tmp-ns`.<br/>
-This is done because the namespaces of running containers are not vidible under `ip netns list`.
+This is done because the namespaces of running containers are not visible under `ip netns list`.
 ```sh
 ln -sf /proc/${pid}/ns/net /var/run/netns/tmp-ns
 ```
@@ -128,25 +128,25 @@ xi. Bring up the virtual interface.
 ip netns exec my-overlay ip link set veth1 up
 ```
 
-After running all these commands, we have succefully wired up the whole thing.<br/>
+After running all these commands, we have successfully wired up the whole thing.<br/>
 However, we won't be able to ping one device from the other because the network `10.0.10.0/24` is situated across another network, i.e., the host's network.
 
 In order to achieve connectivity between all devices in this `10.0.10.0/24` network, we have to teach the interfaces located in the boundary of the network 'sub-segment' (namely the bridge and the VxLan) about the MAC and IP addresses of devices located in the other 'sub-segment'.
 
 ### 3. Populating the ARP and FDB
 
-i. We have to teach the vxlan about the ARP mappings for all the devices present in host2. This is because ARP requests don't leave the network (the requests won't leave the host, which sits in a network different from the Bridge br0). Here, we are adding the (IP, MAC) mapping for the interface atached to the container c2.
+i. We have to teach the vxlan about the ARP mappings for all the devices present in host2. This is because ARP requests don't leave the network (the requests won't leave the host, which sits in a network different from the Bridge br0). Here, we are adding the (IP, MAC) mapping for the interface attached to the container c2.
 
 NOTE: There was a mistake in the question. The IP was mentioned `10.0.10.10` for the comand in host1. However, this IP is already known to the bridge (it's directly attached). The Bridge does not know about the veth IP for the container in the other host machine.
 ```sh
-ip netns exec overns ip neighbor add 10.0.10.11 lladdr $mac_address_of_c2 dev vxlan1
+ip netns exec my-overlay ip neighbor add 10.0.10.11 lladdr $mac_address_of_c2 dev vxlan1
 ```
 
 ii. The above command alone doesn't work because we haven't yet told the Bridge interface yet how to act when it encounters the unknown MAC address. We also need to teach the bridge interface to add a VxLan header when it encounters a destination MAC address that matches the MAC address of c2 (running in a different host).
 
 
 ```sh
-ip netns exec overns bridge fdb add $mac_address_of_c2 dev vxlan1 self dst $host_ip_address vni 42 port 4789
+ip netns exec my-overlay bridge fdb add $mac_address_of_c2 dev vxlan1 self dst $host_ip_address vni 42 port 4789
 ```
 
 - `dev vxlan1`: The device that is associated with the MAC address of c2.
