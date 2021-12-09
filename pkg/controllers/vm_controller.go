@@ -45,6 +45,8 @@ import (
 const controllerAgentName = "sample-controller"
 
 const (
+	// SuccessCreated is used as part of the Event 'reason' when a VM is created
+	SuccessCreated = "Synced"
 	// SuccessSynced is used as part of the Event 'reason' when a VM is synced
 	SuccessSynced = "Synced"
 	// MessageResourceSynced is the message used for an Event fired when a VM
@@ -251,7 +253,6 @@ func (c *Controller) syncHandler(l *log.Entry, key string) error {
 		return err
 	}
 
-	c.recorder.Event(vm, corev1.EventTypeNormal, SuccessSynced, MessageResourceSynced)
 	return nil
 }
 
@@ -266,6 +267,7 @@ func (c *Controller) vmHandler(l *log.Entry, vm *samplev1alpha1.VM) error {
 			l.Errorf("Failed to delete VM. Will retry")
 			return err
 		}
+		c.recorder.Event(vm, corev1.EventTypeNormal, "Deleted", "VM deleted successfully")
 		return c.removeFinalizer(l, vm)
 	}
 
@@ -315,7 +317,7 @@ func (c *Controller) createVM(l *log.Entry, vm *samplev1alpha1.VM) error {
 	vmStatus := samplev1alpha1.VMStatus{
 		VMID: cvm.ID,
 	}
-	// Doing a slighlty expensive call for newly created VMs to minimize conflict.
+	// Doing a slightly expensive call for newly created VMs to minimize conflict.
 	if err := c.updateLatestVMStatus(l, vm, vmStatus); err != nil {
 		// This is a tricky part. If the VM is created in the cloud,
 		// but we fail to update CR status, then we lose track of the created VM.
@@ -325,6 +327,7 @@ func (c *Controller) createVM(l *log.Entry, vm *samplev1alpha1.VM) error {
 	}
 	// Enqueue VM for the perioding syncing of the Status.
 	c.enqueueVMAfter(vm, VMSyncPeriod)
+	c.recorder.Event(vm, corev1.EventTypeNormal, "Created", "VM created successfully")
 	return nil
 }
 
@@ -355,6 +358,7 @@ func (c *Controller) syncVMStatus(l *log.Entry, vm *samplev1alpha1.VM) error {
 	_ = c.updateVMStatus(l, vm, vmStatus)
 	// Enqueue VM for the perioding syncing of the Status.
 	c.enqueueVMAfter(vm, VMSyncPeriod)
+	c.recorder.Event(vm, corev1.EventTypeNormal, "Synced", "VM Synced successfully")
 	return nil
 }
 

@@ -1,4 +1,5 @@
 CRD_OPTIONS ?= "crd:trivialVersions=true,crdVersions=v1"
+IMG ?= nascarsayan/sample-controller:latest
 
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
 ifeq (,$(shell go env GOBIN))
@@ -7,13 +8,13 @@ else
 GOBIN=$(shell go env GOBIN)
 endif
 
-all: vendor codegen manifests build
+all: gomod codegen manifests build
 
 run:
 	./sample-controller
 
-vendor: tidy
-	go mod vendor
+gomod: tidy
+	go mod download
 
 tidy:
 	go mod tidy
@@ -22,7 +23,7 @@ codegen:
 	./hack/update-codegen.sh
 
 manifests: controller-gen yq
-	$(CONTROLLER_GEN) $(CRD_OPTIONS) paths=k8s.io/sample-controller/pkg/apis/samplecontroller/v1alpha1 rbac:roleName=sample-controller-manager-role crd:trivialVersions=true output:artifacts:config=helm/templates
+	$(CONTROLLER_GEN) $(CRD_OPTIONS) paths=k8s.io/sample-controller/pkg/apis/samplecontroller/v1alpha1 rbac:roleName=sample-controller-role crd:trivialVersions=true output:artifacts:config=helm/templates
 	yq -i eval "(.metadata.annotations[\"api-approved.kubernetes.io\"] |= \"unapproved, experimental-only\")" helm/templates/samplecontroller.k8s.io_vms.yaml 
 
 controller-gen:
@@ -47,3 +48,7 @@ endif
 
 build:
 	go build
+
+docker:
+	docker build . -t ${IMG}
+	docker push ${IMG}

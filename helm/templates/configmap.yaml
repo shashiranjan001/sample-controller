@@ -5,8 +5,10 @@ metadata:
 data:
   NAMESPACE: {{ .Release.Namespace }}
   NUM_WORKERS: {{ .Values.numWorkers | quote }}
+  VM_SYNC_DURATION_SECONDS: {{ .Values.vmResyncPeriodSeconds | quote }}
   HA_ENABLED: {{ .Values.ha.enabled | quote }}
-  {{ if .Values.ha.enabled }}
+  {{ if gt .Values.replicas 1.0 }}
+  HA_ENABLED: "true"
   HA_LEASE_LOCK_NAME: {{ .Release.Name }}
   HA_LEASE_DURATION_SECONDS: {{ .Values.ha.leaderElection.leaseDurationSeconds | quote }}
   HA_RENEW_DEADLINE_SECONDS: {{ .Values.ha.leaderElection.renewDeadlineSeconds | quote }}

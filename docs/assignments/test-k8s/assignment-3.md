@@ -42,4 +42,4 @@ If the leader does not ping back after some retries, a new leader is elected. Th
 Kubernetes already has this algorithm implemented as a package in client-go, and we can reuse this algorithm.
 We still need an id for each Pod while creating the lock. We can simply use the hostname of the Pod for this purpose.
 
-I've used this method in the code to support running multiple replicas of the Pod.
+I've used the second method in the code to support running multiple replicas of the Pod.

@@ -39,7 +39,7 @@ func (r *Runner) runSingleNode(ctx context.Context) {
 		exampleInformerFactory.Samplecontroller().V1alpha1().VMs(), logger)
 	exampleInformerFactory.Start(logger.Context.Done())
 
-	if err := controller.Run(logger, 1); err != nil {
+	if err := controller.Run(logger, r.config.NumWorkers); err != nil {
 		logger.Fatalf("Error running controller: %s", err)
 	}
 }

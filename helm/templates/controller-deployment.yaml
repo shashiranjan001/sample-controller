@@ -6,9 +6,7 @@ metadata:
   labels:
     control-plane: sample-controller
 spec:
-  {{ if .Values.ha.enabled}}
   replicas: {{ .Values.replicas }}
-  {{ end }}
   selector:
     matchLabels:
       control-plane: sample-controller
@@ -20,7 +18,7 @@ spec:
       serviceAccountName: default
       containers:
       - name: sample-controller
-        image: "nascarsayan/sample-controller:latest"
+        image: nascarsayan/sample-controller:latest
         imagePullPolicy: Always
         ports:
         - containerPort: 8000

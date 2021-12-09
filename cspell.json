@@ -1,0 +1,45 @@
+{
+  "version": "0.2",
+  "language": "en",
+  "allowCompoundWords": true,
+  "minWordLength": 5,
+  "enabledLanguageIds": [
+    "go",
+    "markdown"
+  ],
+  "dictionaries": [
+    "wordsEn",
+    "companies",
+    "softwareTerms",
+    "misc"
+  ],
+  "ignoreRegExpList": [
+    "\\wv\\d+", // modulev1
+    "\\wv\\d+\\w\\d+" // modulev1alpha1
+  ],
+  "words": [
+    "clientgoscheme",
+    "gopowershell",
+    "kubebuilder",
+    "kubernetes",
+    "k8serror",
+    "logr",
+    "msazure",
+    "finalizers",
+    "gomega",
+    "controllerutil",
+    "nolint",
+    "cmdlet",
+    "pwshgen",
+    "Coordinatio",
+    "sampl",
+    "kubeclientset",
+    "Infof",
+    //
+    "netns",
+    "VxLan",
+    "lladdr",
+    "Samplecontrolle",
+    "nascarsayan"
+  ]
+}
