@@ -12,6 +12,7 @@ import (
 	"k8s.io/sample-controller/internal/config"
 	clientset "k8s.io/sample-controller/pkg/generated/clientset/versioned"
 	informers "k8s.io/sample-controller/pkg/generated/informers/externalversions"
+	"k8s.io/sample-controller/pkg/metrics"
 )
 
 type Runner struct {
@@ -39,7 +40,9 @@ func (r *Runner) runSingleNode(ctx context.Context) {
 		exampleInformerFactory.Samplecontroller().V1alpha1().VMs(), logger)
 	exampleInformerFactory.Start(logger.Context.Done())
 
-	if err := controller.Run(logger, r.config.NumWorkers); err != nil {
+	numWorkers := r.config.NumWorkers
+	metrics.MaxConcurrentReconcilers.Set(float64(numWorkers))
+	if err := controller.Run(logger, numWorkers); err != nil {
 		logger.Fatalf("Error running controller: %s", err)
 	}
 }

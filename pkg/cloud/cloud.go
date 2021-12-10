@@ -8,7 +8,14 @@ import (
 	"net/http"
 
 	"github.com/gotway/gotway/pkg/env"
-	"k8s.io/klog/v2"
+	log "github.com/sirupsen/logrus"
+	"k8s.io/sample-controller/pkg/metrics"
+)
+
+const (
+	reqPOST   = "POST"
+	reqGET    = "GET"
+	reqDELETE = "DELETE"
 )
 
 // cloudAPIURL is the REST API endpoint of the cloud.
@@ -70,35 +77,43 @@ type VMStatus struct {
 	CPUUtilization int32 `json:"cpuUtilization"`
 }
 
-func CreateVM(name string) (*VM, error) {
-	url := cloudAPIURL + "/servers"
+func CreateVM(logger *log.Entry, name string) (*VM, error) {
+	path := "/servers"
+	url := cloudAPIURL + path
+
+	logger = logger.WithFields(log.Fields{
+		"path": path,
+	})
+
 	type bodyType struct {
 		Name string `json:"name"`
 	}
 	body := bodyType{Name: name}
 	bodyStr, _ := json.Marshal(body)
+	e := metrics.NewExecution(reqPOST, path)
 	res, err := http.Post(url, "application/json", bytes.NewBuffer(bodyStr))
 	if err != nil {
-		klog.Errorf("Error while invoking %s: %s", url, err.Error())
+		logger.Errorf("Error occurred while getting response from server: %s", err.Error())
 		return nil, err
 	}
+	e.Finish(res.StatusCode)
 	bodyBytes, err := ioutil.ReadAll(res.Body)
 	if err != nil {
-		klog.Errorf("Error while reading response body: %s", err.Error())
+		logger.Errorf("Error while reading response body: %s", err.Error())
 		return nil, err
 	}
 
 	switch res.StatusCode {
 	case http.StatusInternalServerError, http.StatusConflict:
 		err = newCloudAPIError(res.StatusCode, string(bodyBytes))
-		klog.Errorf("Cloud API call failed: %s", err.Error())
+		logger.Errorf("Cloud API call failed: %s", err.Error())
 		return nil, err
 
 	case http.StatusCreated:
-		klog.Info("VM creation in private cloud was successful")
+		logger.Info("VM creation in private cloud was successful")
 		var vm VM
 		if err := json.Unmarshal(bodyBytes, &vm); err != nil {
-			klog.Errorf(
+			logger.Errorf(
 				"Error while parsing VM data response from cloud; body: %s, error: %s",
 				string(bodyBytes), err.Error())
 			return nil, err
@@ -107,34 +122,42 @@ func CreateVM(name string) (*VM, error) {
 
 	default:
 		err = newUnknownCloudAPIError(res.StatusCode)
-		klog.Errorf(err.Error())
+		logger.Errorf(err.Error())
 		return nil, err
 	}
 }
 
-func IsNameValid(name string) (bool, error) {
+func IsNameValid(logger *log.Entry, name string) (bool, error) {
 	// TODO: We can encode name to escape special characters.
-	url := cloudAPIURL + "/check/" + name
+	path := "/check/" + name
+	url := cloudAPIURL + path
+
+	logger = logger.WithFields(log.Fields{
+		"path": path,
+	})
+
+	e := metrics.NewExecution(reqGET, "/check/:name")
 	res, err := http.Get(url)
 	if err != nil {
-		klog.Errorf("Error while invoking %s: %s", url, err.Error())
+		logger.Errorf("Error occurred while getting response from server: %s", err.Error())
 		return false, err
 	}
+	e.Finish(res.StatusCode)
 	bodyBytes, err := ioutil.ReadAll(res.Body)
 	if err != nil {
-		klog.Errorf("Error while reading response body: %s", err.Error())
+		logger.Errorf("Error while reading response body: %s", err.Error())
 		return false, err
 	}
 
 	switch res.StatusCode {
 	case http.StatusInternalServerError, http.StatusNotFound:
 		err = newCloudAPIError(res.StatusCode, string(bodyBytes))
-		klog.Errorf("Cloud API call failed: %s", err.Error())
+		logger.Errorf("Cloud API call failed: %s", err.Error())
 		return false, err
 
 	case http.StatusForbidden:
 		err = newCloudAPIError(res.StatusCode, string(bodyBytes))
-		klog.Errorf("Cloud API call failed: %s", err.Error())
+		logger.Errorf("Cloud API call failed: %s", err.Error())
 		return false, nil
 
 	case http.StatusOK:
@@ -142,35 +165,43 @@ func IsNameValid(name string) (bool, error) {
 
 	default:
 		err = newUnknownCloudAPIError(res.StatusCode)
-		klog.Errorf(err.Error())
+		logger.Errorf(err.Error())
 		return false, err
 	}
 }
 
-func GetVMStatus(id string) (*VMStatus, error) {
-	url := cloudAPIURL + "/servers/" + id + "/status"
+func GetVMStatus(logger *log.Entry, id string) (*VMStatus, error) {
+	path := "/servers/" + id + "/status"
+	url := cloudAPIURL + path
+
+	logger = logger.WithFields(log.Fields{
+		"path": path,
+	})
+
+	e := metrics.NewExecution(reqGET, "/servers/:id/status")
 	res, err := http.Get(url)
 	if err != nil {
-		klog.Errorf("Error while invoking %s: %s", url, err.Error())
+		logger.Errorf("Error occurred while getting response from server: %s", err.Error())
 		return nil, err
 	}
+	e.Finish(res.StatusCode)
 	bodyBytes, err := ioutil.ReadAll(res.Body)
 	if err != nil {
-		klog.Errorf("Error while reading response body: %s", err.Error())
+		logger.Errorf("Error while reading response body: %s", err.Error())
 		return nil, err
 	}
 
 	switch res.StatusCode {
 	case http.StatusInternalServerError, http.StatusNotFound:
 		err = newCloudAPIError(res.StatusCode, string(bodyBytes))
-		klog.Errorf("Cloud API call failed: %s", err.Error())
+		logger.Errorf("Cloud API call failed: %s", err.Error())
 		return nil, err
 
 	case http.StatusOK:
-		klog.Info("VM status was fetched successfully")
+		logger.Info("VM status was fetched successfully")
 		var vmStatus VMStatus
 		if err := json.Unmarshal(bodyBytes, &vmStatus); err != nil {
-			klog.Errorf(
+			logger.Errorf(
 				"Error while parsing VMStatus data response from cloud; body: %s, error: %s",
 				string(bodyBytes), err.Error())
 			return nil, err
@@ -179,40 +210,48 @@ func GetVMStatus(id string) (*VMStatus, error) {
 
 	default:
 		err = newUnknownCloudAPIError(res.StatusCode)
-		klog.Errorf(err.Error())
+		logger.Errorf(err.Error())
 		return nil, err
 	}
 }
 
-func DeleteVM(id string) error {
-	url := cloudAPIURL + "/servers/" + id
+func DeleteVM(logger *log.Entry, id string) error {
+	path := "/servers/" + id
+	url := cloudAPIURL + path
+
+	logger = logger.WithFields(log.Fields{
+		"path": path,
+	})
+
 	req, err := http.NewRequest("DELETE", url, nil)
 	if err != nil {
-		klog.Errorf("Error while creating request %s: %s", url, err.Error())
+		logger.Errorf("Error occurred while creating the request: %s", err.Error())
 		return err
 	}
 
 	client := &http.Client{}
+	e := metrics.NewExecution(reqDELETE, "/servers/:id")
 	res, err := client.Do(req)
 	if err != nil {
-		klog.Errorf("Error while invoking %s: %s", url, err.Error())
+		logger.Errorf("Error occurred while getting response from server: %s", err.Error())
 		return err
 	}
+	e.Finish(res.StatusCode)
 	defer res.Body.Close()
 
 	switch res.StatusCode {
 	case http.StatusInternalServerError:
 		err = newCloudAPIError(res.StatusCode, "")
-		klog.Errorf("Cloud API call failed: %s", err.Error())
+		logger.Errorf("Cloud API call failed: %s", err.Error())
 		return err
 
 	case http.StatusNoContent:
-		klog.Info("VM was deleted successfully")
+		logger.Info("VM was deleted successfully")
 		return nil
 
 	default:
 		err = newUnknownCloudAPIError(res.StatusCode)
-		klog.Errorf(err.Error())
+		logger.Errorf(err.Error())
 		return err
 	}
 }

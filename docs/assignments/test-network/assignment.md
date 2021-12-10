@@ -142,8 +142,7 @@ NOTE: There was a mistake in the question. The IP was mentioned `10.0.10.10` for
 ip netns exec my-overlay ip neighbor add 10.0.10.11 lladdr $mac_address_of_c2 dev vxlan1
 ```
 
-ii. The above command alone doesn't work because we haven't yet told the Bridge interface yet how to act when it encounters the unknown MAC address. We also need to teach the bridge interface to add a VxLan header when it encounters a destination MAC address that matches the MAC address of c2 (running in a different host).
-
+ii. The above command alone doesn't work because we haven't yet told the Bridge interface yet how to act when it encounters the unknown MAC address. We also need to teach the bridge interface about the IP address of the destination VxLan tunnel endpoint when it encounters a destination MAC address that matches the MAC address of c2 (running in a different host).
 
 ```sh
 ip netns exec my-overlay bridge fdb add $mac_address_of_c2 dev vxlan1 self dst $ip_address_of_host_running_c2 vni 42 port 4789
@@ -155,8 +154,14 @@ ip netns exec my-overlay bridge fdb add $mac_address_of_c2 dev vxlan1 self dst $
 - `vni 42`: The VxLan Network Identifier Number. This has to match the VNI of the VxLan we created in Step 2.
 - `port 4789`: The UDP port on which the remote VxLan tunnel endpoint is listening to.
 
+Let' see what happens when c1 needs to send packet to c2 `{l3: {src: 10.0.10.10, dst: 10.0.10.11}}`. Assume `mac_address_of_c1 = MAC1`, `mac_address_of_c2 = MAC2`
+  - c1 sends ARP request to know about the MAC address for `10.0.10.11`.
+  - VxLan interface knows the MAC (we populated the entry manually in Step i above), and replies to the ARP with `MAC2`.
+  - c1 sends the packet `{l2: {src: MAC1, dst: MAC2}, l3: {src: 10.0.10.10, dst: 10.0.10.11}}`
+  - The packet arrives to the bridge. It extracts the destination MAC address (`MAC2`) from the packet, sees there is a FDB entry for it. It wraps the packet with a new destination host, sets the VNI and the VxLan port on the packet. It then forwards the packet to the vxlan1 interface.
+  - The actual `l3: {src: 10.0.10.10, dst: 10.0.10.11}` is wrapped in a `l3: {src: Host1_IP, dst: HOST2_IP}` packet, which the host's network knows how to handle.
+
 With this we should achieve full connectivity between containers c1 and c2.<br/>
-A packet from c1 to c2 will be forwarded by the external network as shown:
 
 <p align="center">
   <img src="../../images/packet.svg" alt-text="Packet from c1 to c2" height="300"/>
