@@ -42,6 +42,12 @@ md-to-pdf file.md # Creates file.pdf in the same directory where file.md is pres
 The root directory should be named `sample-controller` and placed under a directory with name `k8s.io`,
 so that the module name `k8s.io/sample-controller` gets resolved into the correct directory by `codegen`.
 
+Run `make`. It will download the go modules (GO111MODULE should be on by default in go1.17),
+generate the informers, listers and clientset for our custom k8s resources, and create the binary `sample-controller`
+
+You can run `sample-controller` locally, but please copy `.env.sample` to `.env` and set the environment variables correctly.
+The default values for those environment variables should work except for one: `CLOUD_API_URL`.
+`CLOUD_API_URL` should be set to the private cloud API URL endpoint.
 
 ### Instrumentation
 
