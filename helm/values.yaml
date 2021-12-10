@@ -1,4 +1,5 @@
 # The number of replicas to be created by the controller deployment.
+# If the number of replicas is greater than 1, HA will be enabled.
 replicas: 3
 
 # The number of workers (concurrent reconcilers).

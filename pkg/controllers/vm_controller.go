@@ -40,6 +40,7 @@ import (
 	samplescheme "k8s.io/sample-controller/pkg/generated/clientset/versioned/scheme"
 	informers "k8s.io/sample-controller/pkg/generated/informers/externalversions/samplecontroller/v1alpha1"
 	listers "k8s.io/sample-controller/pkg/generated/listers/samplecontroller/v1alpha1"
+	"k8s.io/sample-controller/pkg/metrics"
 )
 
 const controllerAgentName = "sample-controller"
@@ -204,6 +205,7 @@ func (c *Controller) processNextWorkItem(l *log.Entry) bool {
 		if err := c.syncHandler(l, key); err != nil {
 			// Put the item back on the workqueue to handle any transient errors.
 			c.workqueue.AddRateLimited(key)
+			metrics.WorkqueueRetriesTotal.Inc()
 			return fmt.Errorf("error syncing '%s': %s, requeuing", key, err.Error())
 		}
 		// Finally, if no error occurs we Forget this item so it does not
@@ -262,7 +264,7 @@ func (c *Controller) vmHandler(l *log.Entry, vm *samplev1alpha1.VM) error {
 
 	if isDeletionCandidate(vm, samplev1alpha1.VMFinalizer) {
 		// VM should be deleted. Check if it's deleted and remove finalizer.
-		err := cloud.DeleteVM(vm.Spec.VMName)
+		err := cloud.DeleteVM(l, vm.Spec.VMName)
 		if err != nil {
 			l.Errorf("Failed to delete VM. Will retry")
 			return err
@@ -286,7 +288,7 @@ func (c *Controller) vmHandler(l *log.Entry, vm *samplev1alpha1.VM) error {
 // if the creation failed, and we need to retry.
 func (c *Controller) createVM(l *log.Entry, vm *samplev1alpha1.VM) error {
 	vmName := vm.Spec.VMName
-	ok, err := cloud.IsNameValid(vmName)
+	ok, err := cloud.IsNameValid(l, vmName)
 	if err != nil {
 		cerr := cloud.ToCloudError(err)
 		if cerr == nil {
@@ -302,7 +304,7 @@ func (c *Controller) createVM(l *log.Entry, vm *samplev1alpha1.VM) error {
 		utilruntime.HandleError(fmt.Errorf("VM name is not valid"))
 		return nil
 	}
-	cvm, err := cloud.CreateVM(vmName)
+	cvm, err := cloud.CreateVM(l, vmName)
 	if err != nil {
 		cerr := cloud.ToCloudError(err)
 		if cerr == nil {
@@ -336,7 +338,7 @@ func (c *Controller) syncVMStatus(l *log.Entry, vm *samplev1alpha1.VM) error {
 		utilruntime.HandleError(fmt.Errorf(
 			"Cannot sync VM status from cloud, VM ID is empty in CR status"))
 	}
-	cvmStatus, err := cloud.GetVMStatus(vm.Status.VMID)
+	cvmStatus, err := cloud.GetVMStatus(l, vm.Status.VMID)
 	if err != nil {
 		cerr := cloud.ToCloudError(err)
 		if cerr == nil {

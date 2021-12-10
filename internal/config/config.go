@@ -52,14 +52,11 @@ func GetConfig() (Config, error) {
 
 	var nodeId string
 	if ha {
-		nodeId = env.Get("HA_NODE_ID", "")
-		if nodeId == "" {
-			hostname, err := os.Hostname()
-			if err != nil {
-				return Config{}, fmt.Errorf("error getting node id %v", err)
-			}
-			nodeId = hostname
+		hostname, err := os.Hostname()
+		if err != nil {
+			return Config{}, fmt.Errorf("error getting hostname for node %v", err)
 		}
+		nodeId = hostname
 	}
 
 	return Config{
@@ -69,7 +66,7 @@ func GetConfig() (Config, error) {
 		HA: HA{
 			Enabled:       ha,
 			NodeId:        nodeId,
-			LeaseLockName: env.Get("HA_LEASE_LOCK_NAME", "sample-controller"),
+			LeaseLockName: env.Get("HA_LEASE_LOCK_NAME", "aod4239cbwy.sample-controller"),
 			LeaseDuration: env.GetDuration("HA_LEASE_DURATION_SECONDS", 15) * time.Second,
 			RenewDeadline: env.GetDuration("HA_RENEW_DEADLINE_SECONDS", 10) * time.Second,
 			RetryPeriod:   env.GetDuration("HA_RETRY_PERIOD_SECONDS", 2) * time.Second,
