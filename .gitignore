@@ -1,3 +1,4 @@
 vendor
 sample-controller
 **/*.pdf
+.env
