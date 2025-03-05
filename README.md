@@ -26,17 +26,6 @@ This simple script can be used to create 10 VMs. yq should be installed on the s
 for i in $(seq -f "%04g" 1 10); do yq e "(.metadata.name |= \"vm-sample-$i\") | (.spec.vmName |= \"vm-sample-$i\")" artifacts/examples/example-vm.yaml | ka -; done
 ```
 
-### Assignment discussions
-
-The discussions for all the assignments can be found in Markdown format [here](./docs/assignments).
-
-The PDFs have been generated from these markdown files using `md-to-pdf`
-
-```sh
-npm i -g md-to-pdf
-md-to-pdf file.md # Creates file.pdf in the same directory where file.md is present.
-```
-
 ### Development
 
 The root directory should be named `sample-controller` and placed under a directory with name `k8s.io`,
